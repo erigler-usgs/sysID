@@ -213,8 +213,10 @@ function [thetas, lags, errs, pred_err] = fir_siso_rls (input, output, lagsize, 
     Rinv = (1/lambda) * (Rinv - ((Rinv*Phi*Phi'*Rinv) / 
 				 ((lambda/alpha) + Phi'*Rinv*Phi) ) );
 
-    thetas(i,:) = theta';
     theta = theta + alpha*Rinv*Phi*err;
+    thetas(i,:) = theta';
+
+    pred_err(i) = output(zoi+i) - (theta' * Phi);
 
 
     printf ("\r %d of %d",i,(length (input) - mii) - l_lags + 1 - \
