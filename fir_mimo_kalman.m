@@ -13,7 +13,7 @@
 ### 
 ### Usage:
 ###
-### [theta, Pbar, lags, theta_mtx, Pbar_mtx, errs] = fir_mimo_kalman \
+### [theta, Pbar, lags, errs, theta_mtx, Pbar_mtx] = fir_mimo_kalman \
 ###                 (i_ts, o_ts, lagsize [, theta_0, Pbar_0, R1, R2]);
 ###
 ### INPUTS:
@@ -130,7 +130,7 @@
 ###             covariance matrix calculated using the user's favorite method.
 ###             (default = 1)
 ###
-### R1        - State or process noise covariance.  This is a static matrix 
+### R1        - State or process noise covariance.  This is a vector or matrix 
 ###             describing the strength of the time variance of the parameters
 ###             in theta, and can be tuned to affect stability and convergence
 ###             properties. This input parameter must be either 1) a scalar, which
@@ -363,11 +363,11 @@ function [theta, Pbar, lags, errs, theta_mtx, Pbar_mtx] = fir_mimo_kalman \
     elseif (size(R1) == [lo_ts, llags*ni_ts*no_ts])
       ## This is pertinent only if the desired state is a single scalar value
       ## with a time-dependent covariance...an extremely rare situation.
-      ## Change nothing in R2, but set a flag so that the algorithm knows
+      ## Change nothing in R1, but set a flag so that the algorithm knows
       ## how to handle it later on.
-      tv_R2 = 1;
+      tv_R1 = 1;
     else
-      error (["\n\"R2\" is not an appropriate dimension, read the help file.\n"]);
+      error (["\n\"R1\" is not an appropriate dimension, read the help file.\n"]);
     endif
     
   elseif (is_matrix (R1))
@@ -378,7 +378,7 @@ function [theta, Pbar, lags, errs, theta_mtx, Pbar_mtx] = fir_mimo_kalman \
       ## to handle it later on.
       tv_R1 = 1;
     elseif (size (R1) == [llags*ni_ts*no_ts,llags*ni_ts*no_ts])
-      ## do nothing, R2 is OK as is
+      ## do nothing, R1 is OK as is
     else
       error (["\n\"R1\" is not an appropriate dimension, read the help file.\n"]);
     endif
@@ -494,9 +494,27 @@ function [theta, Pbar, lags, errs, theta_mtx, Pbar_mtx] = fir_mimo_kalman \
 
 
     ## This probably slows things down slightly, but that's OK for now.
-    printf ("\r %d of %d",i,lo_ts);
+    printf ("\r %d of %d  -- %d",i,lo_ts,toc);
     fflush (stdout);
 
+    
+    if (nargout == 0)
+      
+      #if (i == 1)
+	multiplot (ni_ts, no_ts)
+      #endif
+
+      for k=1:no_ts
+	for l=1:ni_ts  
+	  #clearplot;
+	  grid ("on");
+	  mplot (lags, theta_tmp ( k + (l-1)*no_ts  :ni_ts*no_ts:length(theta_tmp)),';;-' );
+	endfor
+      endfor
+
+      pause (.1);
+      
+    endif
 
   endfor
 
