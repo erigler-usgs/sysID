@@ -38,23 +38,18 @@ function [filta, filtb]=iir(alength, output, blength, input)
   if nr < nc, output=transpose(output); endif
   
 
-  maxlag = max([alength,blength]);
-
+  ##maxlag = max([alength,blength]);
+  maxlag = alength + blength + 1;
 
   ## Auto-covariance of input
-  [auto_in, lag] = xcov (output, maxlag*2);
+  [auto_in, lag] = xcov (output, maxlag);
 
   ## Cross-covariance of input and output
   if (nargin == 4)
-    cross_inout = xcov(output, input, maxlag*2);
+    cross_inout = xcov(output, input, maxlag);
   endif
 
-  ## How many rows for the LHS matrix?
-  if (nargin == 4)
-    nrows = alength + blength;
-  else
-    nrows = alength;
-  endif
+  nrows = maxlag - 1;
 
 
   ## Calculate the LHS matrix
@@ -63,7 +58,7 @@ function [filta, filtb]=iir(alength, output, blength, input)
   if blength ~= 0
     for m = 1:blength
       for l = 1:nrows
-	lhs_matrix (l,m) = cross_inout ( (maxlag*2 + 1) + (l-m) + 1);	
+	lhs_matrix (l,m) = cross_inout ( (maxlag + 1) + (l-m) + 1);	
       endfor
     endfor
   endif
@@ -72,7 +67,7 @@ function [filta, filtb]=iir(alength, output, blength, input)
   if alength ~= 0
     for n=1:alength
       for l=1:nrows
-	lhs_matrix (l,n+blength) = -1 * auto_in ( (maxlag*2 + 1) + (l-n) );
+	lhs_matrix (l,n+blength) = -1 * auto_in ( (maxlag + 1) + (l-n) );
       endfor
     endfor
   endif
@@ -80,7 +75,7 @@ function [filta, filtb]=iir(alength, output, blength, input)
 
   ## Calculate the RHS matrix (should be cross correlations one timestep
   ## in the future
-  rhs_matrix = auto_in (maxlag*2 + 2: maxlag*2 + 2 + nrows-1);
+  rhs_matrix = auto_in (maxlag + 2: maxlag + 2 + nrows-1);
 
 
   ## Use SVD and back substitution to solve
@@ -104,12 +99,5 @@ function [filta, filtb]=iir(alength, output, blength, input)
 
   filtb = theta (1:blength);
   filta = theta (blength+1:length (theta));
-
-
-  ## This routine calculates theta with the B coefficients (causal)
-  ## first!  It's necessary to shift the array so that A's are first.
-  ##if (blength != 0)
-  ##  theta=shift(theta,alength);
-  ##endif
 
 endfunction
