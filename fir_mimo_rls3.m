@@ -5,13 +5,13 @@
 ### The name of this function implies that only Finite Impulse Response
 ### functions are returned, but adaptive AR models can be returned as well
 ### if one passes appropriately lagged input and output time series. This 
-### routine uses the algorithm described in Johansson (1993, pp. 120).
+### routine uses the algorithm described in Johansson (1993, pp. 263-267).
 ###
 ### 
 ### Usage:
 ###
 ### [theta, Pbar, lags, theta_mtx, Pbar_mtx, errs] = fir_mimo_rls3 \
-###               (i_ts, o_ts, lagsize [, theta_0, Pbar_0, lambda]);
+###               (i_ts, o_ts, lagsize [, theta_0, Pbar_0, lambda, W]);
 ###
 ### INPUTS:
 ###
@@ -36,7 +36,7 @@
 ###             and possibly realtime configuration, it does not do 
 ###             any zero-padding, or pre-filtering to set nice initial 
 ###             conditions.  Therefore, the i_ts time series will always be 
-###             longer than the o_ts time series by a number of samples
+###             longer than the o_ts time squotationeries by a number of samples
 ###             equal to the number of lags (defined by lagsize) minus 1. 
 ###
 ###             Furthermore, the first value of i_ts must lag in time the
@@ -142,10 +142,10 @@
 ###             a vector of length equal to the number of outputs, these values
 ###             will constitute the diagonal elements of a square matrix of
 ###             dimension (#outputs,#outputs).  If this parameter is a matrix
-###             of this dimension, it is passed on.  If this parameter is a 
+###             of this dimension, it is passed on "as is".  If this parameter is a 
 ###             matrix of dimension (length(o_ts), #outputs), it is assumed that
-###             W is a set of time-depedent weigting vectors which will consti-
-###             tute the diagonal elements of a square matrix.
+###             W is a set of time-depedent weigting vectors, each of which consti-
+###             tute the diagonal elements of a square matrix of dimension #outputs.
 ###             (default value = 1)
 ###
 ###
@@ -239,7 +239,7 @@ function [theta, Pbar, lags, errs, theta_mtx, Pbar_mtx] = fir_mimo_rls3 \
   ## if lagsize is longer than 2 elements (i.e. don't trust the user
   ## to create his/her own lag vector properly).
   if (length (lagsize) > 2)
-    error (["\nLag vector must be a scalar, or a 2-element vector\n", \
+    error (["\nLag vector must be a scalar, or a 2element vector\n", \
 	    "that indicates the minimum and maximum lag indices.\n"]);
   endif
 
@@ -261,7 +261,7 @@ function [theta, Pbar, lags, errs, theta_mtx, Pbar_mtx] = fir_mimo_rls3 \
   ## properly lagged.
   if ((rows (i_ts) - rows (o_ts)) != length(lags)-1 ||
       (length (lags) >= rows (i_ts)) )
-    error (["\nInput and Output time series don't match,\n", \
+    error (["\nInput and Output time series don\'t match,\n ", \
 	    "or they are not long enough to determine a \n", \
 	    "filter recursively.\n"]);
   endif
@@ -269,7 +269,7 @@ function [theta, Pbar, lags, errs, theta_mtx, Pbar_mtx] = fir_mimo_rls3 \
 
 
   ## A bunch of potentially useful static variables
-  llags  = rows (lags);           ## number of lags
+  llags   = rows (lags);          ## number of lags
   ni_ts   = columns (i_ts);       ## number of different inputs
   no_ts   = columns (o_ts);       ## number of different outputs
   lo_ts   = rows (o_ts);          ## number of output data points
@@ -306,13 +306,13 @@ function [theta, Pbar, lags, errs, theta_mtx, Pbar_mtx] = fir_mimo_rls3 \
     ## but for now parameterize theta according to form #1 in the Help section.
     theta = reshape (theta0, [no_ts, ni_ts*llags])';
   elseif (is_matrix (theta0))
-    if (rows (theta0) / ni_ts != llags ||
+    if (rows (theta0) / ni_ts != llags || \
 	columns (theta0) != no_ts )
       error (["\nFilter's initial value has wrong dimensions!\n"]);
     endif
     theta = theta0;
   else
-    error (["\nFilter is wrong data-type, it must be a scalar or properly ",\
+    error (["\nFilter is wrong data-type, it must be a scalar or properly\n",\
 	    "sized vector or matirx.\n"]);
   endif
 
@@ -362,7 +362,7 @@ function [theta, Pbar, lags, errs, theta_mtx, Pbar_mtx] = fir_mimo_rls3 \
       ## how to handle it later on.
       tv_W = 1;
     else
-      error (["\"W\" is not an appropriate dimension, read the help file.\n"]);
+      error (["\n\"W\" is not an appropriate dimension, read the help file.\n"]);
     endif
   elseif (size (W) == size (o_ts))
     ## this is pertinent for multiple outputs, with time-varying weighting.
@@ -370,7 +370,12 @@ function [theta, Pbar, lags, errs, theta_mtx, Pbar_mtx] = fir_mimo_rls3 \
     ## to handle it later on.
     tv_W = 1;
   elseif (size (W) == size (eye(no_ts)))
-    ## do nothing, W is OK as is
+    ## I can find nothing in the literature that says it is OK to treat this
+    ## as anything but a set of weights.  This means that anything on the
+    ## off-diagonals is not appropriate
+    if (W != diag (diag (W)))
+      error (["\n\"W\" can have no off-diagonal values.\n"]);
+    endif
   else
     error (["\"W\" is not an appropriate dimension, read the help file.\n"]);
   endif
@@ -418,12 +423,11 @@ function [theta, Pbar, lags, errs, theta_mtx, Pbar_mtx] = fir_mimo_rls3 \
 
     ## This is mostly to suppress warnings about singular matrices,
     ## but maybe someday I'll actually check the "rcond".
-    [denom,rcond] = inverse (PHI_tmp' * Pbar * PHI_tmp + lambda * W_tmp );
+   [denom,rcond] = inverse (PHI_tmp' * Pbar * PHI_tmp + lambda * (W_tmp^-1) );
 
     gamma = Pbar * PHI_tmp * denom;
     Pbar = (1 / lambda) * (Pbar - gamma * PHI_tmp' * Pbar);
     theta_tmp = theta_tmp + gamma * err;
-
 
 
     ## Store errs, state, and covariance matrices for each time step.
