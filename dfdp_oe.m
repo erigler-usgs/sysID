@@ -59,30 +59,37 @@ function prt = dfdp_oe (x, f, p)
     p = p';
   endif
 
+  
+  ## How many inputs?
+  nits = columns (x);
+  
+  ## Pull F and B out of P
+  for i=1:nits
+    B(:,i) = p ( ( (nb+nf)*(i-1))+1 : (nb+nf)*(i-1) + (nb) );
+    F(:,i) = p ( ( (nb+nf)*(i-1))+nb+1:(nb+nf)*(i-1) + (nb+nf) );
+  endfor
 
-  ## Pull B and F out of P
-  B = p (1:nb);
-  F = p (nb+1:length(p));
-
-
+  
   ## Initialize Jacobian matrix
   prt = zeros (length(f), length(p) );
 
   ## Calculate partials
-  for j=1:nb
-
-    ## dy/db
-    prt (:,j) = filter ([1], [1;F], \
-    			[zeros(j-1,1); x(1:length(x)-j+1)]);
+  for i=1:nits
+    for j=1:nb
+      
+      ## dy/db
+      prt (:,j + (i-1)*(nb+nf)) = filter ([1], [1;F(:,i)], \
+    					  [zeros(j-1,1); x(1:rows(x)-j+1,i)]);
+    endfor
   endfor
 
-  for j=1:nf
-
-    ## dy/dF
-    prt (:,j+nb) = -(filter ([1], [1;F], \
-    			     [zeros(j,1); f(1:length(f)-j)]) );
+  for i=1:nits
+    for j=1:nf
+      
+      ## dy/dF
+      prt (:,j+nb + (i-1)*(nb+nf)) = -(filter ([1], [1;F(:,i)], \
+    					       [zeros(j,1); f(1:rows(f)-j)]) );
+    endfor
   endfor
-
-
 
 endfunction

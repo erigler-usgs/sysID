@@ -50,29 +50,40 @@ function y = filt_oe (its, p)
   nf = leasqr_misc.nf;
 
   ## Make sure that the filter and input vectors are
-  ## both vectors of scalars
-  if (min(size(its)) > 1 ||
-      min(size(p))   > 1 )
-    error (["Can only handle vectors of scalars for now\n"]);
-  endif
-
-  ## Make sure that the filter and input vectors are
-  ## both column vectors
+  ## both made of column vectors
   if (columns(p) > rows(p) )
     p = p';
   endif
 
+  ## This is probably safe, since we usually expect many more observations
+  ## than observation types
   if (columns(its) > rows(its))
     its=its';
   endif
 
+  ## Make sure that the filter is a vector of scalars
+  if (min(size(p)) > 1 )
+    error (["The coefficients must be in a single vector of scalars\n"]);
+  endif
+
+
+  ## How many inputs?
+  nits = columns (its);
 
   ## Pull F and B out of P
-  B = p (1:nb);
-  F = p (nb+1:length(p));
+  for i=1:nits
+    B(:,i) = p ( ( (nb+nf)*(i-1))+1 : (nb+nf)*(i-1) + (nb) );
+    F(:,i) = p ( ( (nb+nf)*(i-1))+nb+1:(nb+nf)*(i-1) + (nb+nf) );
+  endfor
 
+
+  ## Calculate the MISO model output
   ## for now we won't worry about non-zero initial conditions
-  y = filter ( [B], [1;F], its);
+  y = zeros (length(its),1);
+
+  for i=1:nits
+    y = y + filter ( [B(:,i)], [1;F(:,i)], its(:,i) );
+  endfor
 
 
 endfunction
