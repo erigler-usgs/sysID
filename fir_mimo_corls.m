@@ -45,7 +45,7 @@
 ###             rhs matrix.  If not, something is very wrong!
 ###
 
-function [theta,lag,PHI,CC] = fir_mimo_corls (its, ots, lagsize)
+function [theta,lag,PHI,CC] = fir_mimo_corls(its, ots, lagsize)
 
   if ( nargin < 2 || nargin > 3)
     usage (["\n\n[filter, lag] = ", \
@@ -92,13 +92,13 @@ function [theta,lag,PHI,CC] = fir_mimo_corls (its, ots, lagsize)
 
 
   ## Calculate auto-correlation functions for input series
-  autoin = xcorr (its, max_lag-min_lag);
+  autoin = flipud(xcorr (its, max_lag-min_lag));
   #autoin = xcov (its, max_lag-min_lag);
 
 
   ## Arrange the auto-correlation regression matrix (Left-Hand side)
   dim_phis = [columns(its),columns(its)];
-  PHI = zeros ((max_lag-min_lag+1) * dim_phis(1));
+  PHI = zeros((max_lag-min_lag+1) * dim_phis(1));
 
   for i=1:dim_phis(1):(max_lag-min_lag+1)*dim_phis(1)
     for j=1:dim_phis(2):(max_lag-min_lag+1)*dim_phis(2)
@@ -112,7 +112,7 @@ function [theta,lag,PHI,CC] = fir_mimo_corls (its, ots, lagsize)
       ## the first column, then to the top of the second and down, then to the
       ## top of the third and down, etc.).  This is why we take the transpose here.
       PHI ( i:i+dim_phis(1)-1 , j:j+dim_phis(2)-1 ) = \
-	  reshape (autoin ( abs(jj - ((max_lag-min_lag+1)+1)) + (ii-1),:), \
+	  reshape(autoin ( abs(jj - ((max_lag-min_lag+1)+1)) + (ii-1),:), \
 		   dim_phis(2), dim_phis(1) )';
 
     endfor
@@ -131,19 +131,21 @@ function [theta,lag,PHI,CC] = fir_mimo_corls (its, ots, lagsize)
 
   for i=1:columns (its)
     for j=1:columns (ots)
-      cross_inout (:,k) = xcorr (its (:,i), ots(:,j), maxlagsize);
+      ## flipud is to fix problem that occurs since change in xcorr.m in
+      ## octaveforge that was made in 2004 (EJR, 2/28/2005)
+      cross_inout(:,k) = flipud(xcorr(its(:,i), ots(:,j), maxlagsize));
       #cross_inout (:,k) = xcov (its (:,i), ots(:,j), maxlagsize);
       k++;
     endfor
   endfor
 
   ## Shift for appropriate lags
-  cross_inout = cross_inout ( (maxlagsize+1) + min_lag: (maxlagsize+1) + max_lag , : );
+  cross_inout = cross_inout( (maxlagsize+1) + min_lag: (maxlagsize+1) + max_lag , : );
 
 
   ## Arrange the cross-correlation matrix (Right-Hand side)
   dim_ccs = [columns(its),columns(ots)];
-  CC = reshape (cross_inout (1,:), dim_ccs(2), dim_ccs(1) )';
+  CC = reshape(cross_inout(1,:), dim_ccs(2), dim_ccs(1) )';
 
   for i=2:(max_lag-min_lag+1)
     
@@ -151,7 +153,7 @@ function [theta,lag,PHI,CC] = fir_mimo_corls (its, ots, lagsize)
     ## according to FORTRAN standard indexing (meaning that it progresses down
     ## the first column, then to the top of the second and down, then to the
     ## top of the third and down, etc.).  This is why we take the transpose here.
-    CC = [CC ; reshape (cross_inout (i,:), dim_ccs(2), dim_ccs(1) )'];
+    CC = [CC ; reshape(cross_inout (i,:), dim_ccs(2), dim_ccs(1) )'];
 
     ## (That was a heck of a lot easier than setting up the 
     ##  auto-correlation matrix!!!)
@@ -163,7 +165,7 @@ function [theta,lag,PHI,CC] = fir_mimo_corls (its, ots, lagsize)
   [U,S,V] = svd (PHI);
   ## take out very small values of S
   S = diag (S);
-  small = find (S/max(S) <= 1e-9);
+  small = find(S/max(S) <= 1e-9);
 
   if small
     S(small) = 0;
