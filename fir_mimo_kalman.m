@@ -331,7 +331,7 @@ function [theta, Pbar, lags, errs, theta_mtx, Pbar_mtx] = fir_mimo_kalman \
 
   ## Initialize Pbar
   if (is_scalar (Pbar_0))
-    Pbar = [eye (ni_ts*llags*no_ts) .* Pbar_0];
+    Pbar = [eye(ni_ts*llags*no_ts) .* Pbar_0];
   elseif (is_vector (Pbar_0))
     if (length (Pbar_0) == (ni_ts*llags*no_ts))
       Pbar = diag (Pbar_0);
@@ -340,7 +340,6 @@ function [theta, Pbar, lags, errs, theta_mtx, Pbar_mtx] = fir_mimo_kalman \
     else
       error(["\nCovariance's initial value has wrong dimension!\n"]);
     endif
-
   elseif (is_matrix (Pbar_0))
     if (size (Pbar_0) != size (eye(ni_ts*llags*no_ts)) )
       error (["\nWrong size Covariance matrix!\n"]);
