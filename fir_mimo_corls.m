@@ -93,6 +93,8 @@ function [theta,lag,PHI,CC] = fir_mimo_corls (its, ots, lagsize)
 
   ## Calculate auto-correlation functions for input series
   autoin = xcorr (its, max_lag-min_lag);
+  #autoin = xcov (its, max_lag-min_lag);
+
 
   ## Arrange the auto-correlation regression matrix (Left-Hand side)
   dim_phis = [columns(its),columns(its)];
@@ -130,6 +132,7 @@ function [theta,lag,PHI,CC] = fir_mimo_corls (its, ots, lagsize)
   for i=1:columns (its)
     for j=1:columns (ots)
       cross_inout (:,k) = xcorr (its (:,i), ots(:,j), maxlagsize);
+      #cross_inout (:,k) = xcov (its (:,i), ots(:,j), maxlagsize);
       k++;
     endfor
   endfor
