@@ -99,19 +99,13 @@
 ###
 ### Qs0        - Structure containing initial derivative matrices W and Psi, 
 ###              as well as the innovations covariance (G, for big gamma), and
-###              the covariance matrix P, which is equal to Gss*inv(R).
-###              If any or all of these are missing, default initializers
-###              will be generated which should eventually converge to optimal  
-###              values.  In addition, a shadow matrix for G can be specified (Gss)
-###              specifying the step size (little gamma) of the recursive
-###              algorithm used to determine the optimal G independently of
-###              the RPE algorithm (P, W, and Psi are determined in the algorithm
-###              proper).  For the sample 4th order, 2 input, 3 output system
-###              described thus far, the matrices might be:
+###              the covariance matrix P, which is proportional to inv(R).
+###              If any or all of these are missing, reasonable default 
+###              initial values will be generated. 
 ###
-###             Qs0.G = [g01 g02 g03 ]       Qs0.Gss = [.1   0   0 ]
-###                     [g04 g05 g06 ]                 [ 0  .1   0 ]
-###                     [g07 g08 g09 ]                 [ 0   0  .1 ]
+###             Qs0.G = [g01 g02 g03 ] 
+###                     [g04 g05 g06 ] 
+###                     [g07 g08 g09 ] 
 ###
 ###            Qs0.W =  [ 0   0 .(# adjustable coefficients). 0 ]
 ###                     [ 0   0 ............................. 0 ]
@@ -161,24 +155,48 @@
 ###                     solution, even if the values in the shadow matrices
 ###                     of the ISS structure are equal to zero.
 ###
-###              Note2:   Gss should be between 0 (implies G is constant) and 1 
-###                     (implies that G is the latest instantaneous error^2,
-###                     and previous G's are disregarded completely).  The
-###                     recursive algorithm is quite simple:
+###              Note2:   A variable Gss may also exist in this structure, and
+###                     is used to determine the "step size" for updating G in 
+###                     a simple recursive algorithm:
 ###                                                       T
 ###                     G(t) = G(t-1) + Gss .* (err(t)*err (t) - G(t-1))
 ###
-###                       Gss may also be a string describing a function of time-
-###                     step (t).  For example, if Gss='1/t', then the value 1/t
-###                     will be used at each time step.  If Gss is not defined
-###                     a simple hard-coded algorithm is applied that forces
-###                     GSS-->0 as t-->infinity.
+###                       Gss should be between 0 (implies G is constant) and 1 
+###                     (implies that G is the latest instantaneous error^2,
+###                     and previous G's are disregarded completely). If Gss is 
+###                     a constant scalar, 1-Gss defines a fixed exponential 
+###                     forgetting factor, but such adaptive filters should really be 
+###                     implemented using the more formal method of specifying
+###                     parameter variances via the ISS0 shadow matrices.
+###                       If Gss is a two-element ROW vector, it is assumed that
+###                     the first element is the starting Gss, and the second
+###                     element is a variable lam0 that somehow determines the 
+###                     exponential rate at which Gss evolves toward zero.  This
+###                     is how one would usually identify a time-stationary
+###                     system (assuming parameter variances are zero also).
+###                       If Gss is a three-element ROW vector, it is assumed that
+###                     the first element is the starting Gss, the second element is
+###                     lam0, and the third is the target Gss (even though this can
+###                     be any value between 0 and 1, it should be less than the
+###                     starting Gss value).
+###                       And if that's not confusing enough, the user can specify
+###                     their own function(s) for Gss.  This can be done with a string 
+###                     describing a function of time-step (t).  For example, if Gss='1/t', 
+###                     then the value 1/t will be used at each time step.  Also Gss
+###                     can be a column vector of scalars equal in length to the number
+###                     of inputs.  If by chance there are only 3 outputs (very unlikely)
+###                     remember to be careful whether Gss is a column vector or a row
+###                     vector, it matters!
 ###
-###              Note3:   Shadow matrices Pss, Wss, and Psiss may actually be
+###              Note3:   Shadow variables Pss, Wss, and Psiss may actually be
 ###                     set but only have meaning if Qs_Mtrx is requested as an
 ###                     output.  If this is the case, each P, W, and Psi
-###                     will be accumulated and returned to the user.  THIS
-###                     MIGHT EASILY USE UP ALL AVAILABLE MEMORY, BE CAREFUL!
+###                     will be accumulated and returned to the user.  THIS CAN
+###                     VERY EASILY USE UP ALL AVAILABLE MEMORY SO BE CAREFUL!
+###                     (Don't ask why they have the suffix "ss", I just couldn't 
+###                      think of anything more descriptive, so I used the same thing
+###                      I did for Gss, even though these variables have nothing
+###                      whatsoever to do with "step size").
 ###
 ### maxStabCheck- The function is designed to check whether or not the matrix
 ###              [A(t)-K(t)C(t)] is exponentially stable (are its eigen values
@@ -275,17 +293,18 @@
 function [Y, ISS, X, Qs, StabCheck, ISS_Mtrx, X_Mtrx, Qs_Mtrx,Gss_Mtrx] = \
         rpe_iss (uobs, yobs, ISS0, X0, Qs0, maxStabCheck)
 
+        warn_divide_by_zero=0;
 
         if (nargin < 2)
             error("\nNot input enough parameters\n");
         elseif (nargin > 6)
             error("\nToo many input parameters\n");
         elseif (nargin == 2 ||
-                (nargin == 6 && isempty(ISS0) && isempty(X0) && isempty(Qs0)) )
+                (nargin == 6 && isempty(ISS0)) )
                 
         ##
         ##  Assume default ISS0, X0, Qs0, and maxStabCheck values
-        ##
+        ##  (This should be the same thing as if ISS0==1)
             
             nu = columns(uobs);         # number of different inputs
             ny = columns(yobs);         # number of different outputs
@@ -302,7 +321,49 @@ function [Y, ISS, X, Qs, StabCheck, ISS_Mtrx, X_Mtrx, Qs_Mtrx,Gss_Mtrx] = \
             ISS0.C = eye(ny,n);
             ISS0.Cv = nan*eye(ny,n);    # fix parameters for C
             ISS0.D = zeros(ny,nu);
-            ISS0.Dv = nan*zeros(ny,nu); # fix parameters for D            
+            ISS0.Dv = nan*zeros(ny,nu); # fix parameters for D
+            
+        elseif (nargin == 3 && isscalar(ISS0) ||
+                (nargin == 6 && isscalar(ISS0)) )
+            ##
+            ## If ISS0 is a scalar, create state space matrices corresponding to 
+            ## a system of order n>=ny, and specify the adjustable rows of the A
+            ## matrix (and also the "1"'s of C) such that the system can be
+            ## described as Canonical Observable, or Companion Form
+            ##
+            nu = columns(uobs);
+            ny = columns(yobs);
+            if (ISS0 >= ny)
+                n = ISS0;
+            else
+                error('Must specify order greater than or equal to number of outputs');
+            endif
+
+            ISS0.A = zeros(n,n);            
+            for i=1:n 
+                for j=1:n 
+                    if (j==i+1) 
+                        ISS0.A(i,j)=1; 
+                    endif; 
+                endfor; 
+            endfor;
+            ## Place adjustable parameters in last n-ny rows
+            ISS0.A(n-ny+1:n,:) = 0;
+            ISS0.Av = zeros(n,n);
+            ISS0.Av(find(any(ISS0.A,2)),:) = NaN;
+            ISS0.B = zeros(n,nu);
+            ISS0.Bv = zeros(n,nu);
+            ISS0.K = zeros(n,ny);
+            ISS0.Kv = zeros(n,ny);
+            ISS0.C = zeros(ny,n);
+            ISS0.C(1,1) = 1;
+            r=find(~any(ISS0.A,2));
+            for i=2:length(r)
+                ISS0.C(i,r(i-1)+1)=1;
+            endfor
+            ISS0.Cv = nan*ISS0.C;
+            ISS0.D = zeros(ny,nu);
+            ISS0.Dv = nan*ISS0.D;
             
         endif
             
@@ -436,7 +497,8 @@ function [Y, ISS, X, Qs, StabCheck, ISS_Mtrx, X_Mtrx, Qs_Mtrx,Gss_Mtrx] = \
         endif
         
         ##
-        ## Check existence and dimensions of initial innovations covariance matrix
+        ## Check existence and dimensions of initial innovations covariance matrix,
+        ## and variables that specify stepsize/forgetting factor
         ##
         if (~ (isfield(Qs0,'G')) )
             Qs0.G = zeros(ny,ny);
@@ -444,6 +506,42 @@ function [Y, ISS, X, Qs, StabCheck, ISS_Mtrx, X_Mtrx, Qs_Mtrx,Gss_Mtrx] = \
             error("\nThe innovations covariance matrix G must must be square, with dimension equal to the number of outputs\n");
         endif
         
+        ##
+        ## Check existence and form of stepsize variable
+        ##
+        if (~ (isfield(Qs0,'Gss')) )
+            Qs0.Gss = 0;
+        endif
+        if (rows(Qs0.Gss)==1 && columns(Qs0.Gss)==1)
+            Gss  = Qs0.Gss;
+            lam  = 1-Qs0.Gss;
+            lam0 = 1;
+            lamt = 1;
+        elseif (rows(Qs0.Gss)==1 && columns(Qs0.Gss)==2)
+            Gss  = Qs0.Gss(1);
+            lam  = 1-Qs0.Gss(1);
+            lam0 = Qs0.Gss(2);
+            lamt = 1;
+        elseif (rows(Qs0.Gss)==1 && columns(Qs0.Gss)==3)
+            Gss  = Qs0.Gss(1);
+            lam  = 1-Qs0.Gss(1);
+            lam0 = Qs0.Gss(2);
+            lamt = 1-Qs0.Gss(3);
+        elseif (isstr(QS0.Gss))
+            if (rows(Qs0.Gss)==ny)
+                Gss_str = [];
+                Gss_vec = [];
+            elseif (rows(Qs0.Gss)==1)
+                Gss_str = [];
+            else
+                error('Step-size string not valid');
+            endif
+        elseif (rows(Qs0.Gss)==ny && columns(Qs0.Gss)==1)
+            ## set flag for vector of time-dependent Gss's
+            Gss_vec = [];
+        else
+            error('Step-size vector not valid');
+        endif
 
         
         ##
@@ -483,18 +581,6 @@ function [Y, ISS, X, Qs, StabCheck, ISS_Mtrx, X_Mtrx, Qs_Mtrx,Gss_Mtrx] = \
             maxStabCheck=0;
         endif
 
-
-        ##
-        ## These gain sequence adjusters are hard coded because they
-        ## are only really relevant in the transient phase of identificaton,
-        ## and only if Qs0.Gss is not set by the user.  They force the
-        ## algorithm to start with a forgetting factor of 0.9 and exponentially
-        ## approach 1 at a rate defined by lam0.
-        ##
-        lam0=0.99;
-        lam=0.9;
-        Gss=.1;
-        
 
 
         ##
@@ -606,15 +692,21 @@ function [Y, ISS, X, Qs, StabCheck, ISS_Mtrx, X_Mtrx, Qs_Mtrx,Gss_Mtrx] = \
             Gss_mtrx = zeros(rows(yobs),1);
         endif
         
+
         
-        ##
-        ## Start loop
-        ##
         
+        ##################################
+       ##                                ##
+      ### Start main loop                ###
+       ##                                ##
+        ##################################
+        multistep=1
         keyboard ('Before Loop > ');
-        
         for t=1:rows(yobs)
-                        
+            
+            ##
+            ## Check if input or output is available for this time step
+            ##
             obs_avail = ~ any(isnan(yobs(t,:)) );
             ins_avail = ~ any(isnan(uobs(t,:)) );
             
@@ -630,6 +722,23 @@ function [Y, ISS, X, Qs, StabCheck, ISS_Mtrx, X_Mtrx, Qs_Mtrx,Gss_Mtrx] = \
             
             if (obs_avail)
                 err = yobs(t,:)' - yhat;
+            else
+                ## if calculating err becomes too computationally
+                ## burdensome, place another if block here; otherwise
+                ## none of the subsequent calculations will use it
+                ## anyway unless multistep is set, EXCEPT the state
+                ## propogation
+                if (isdefinite(Qs0.G,1e-9))
+                #if(0) # something wrong with chol.oct
+                    ## this implies that errs are correlated and should
+                    ## be used if possible
+                    R = chol(Qs0.G);
+                    err = R * randn(ny,1);
+                else
+                    ## if innovations covariance is not PosDef, simply
+                    ## assume that errors are independent with zero-mean
+                    err = sqrt(diag(Qs0.G)) .* randn(ny,1);
+                endif
             endif
             
             
@@ -637,23 +746,22 @@ function [Y, ISS, X, Qs, StabCheck, ISS_Mtrx, X_Mtrx, Qs_Mtrx,Gss_Mtrx] = \
             ## Update innovations covariance (determine gain (GSS)
             ##  and forgetting factor (lam) first)
             ##
-            if (obs_avail)
+            if (obs_avail && nv>0)
                 
-                if (isfield(Qs0,'Gss'))
-                    if isstr(Qs0.Gss)
-                        Gss=eval(Qs0.Gss);
-                        lam=1-Gss;
-                    else
-                        Gss=Qs0.Gss;
-                        lam=1-Gss;
-                    endif
-                else
-                    lam=lam0*lam+(1-lam0);
-                    Gss = 1/(1+(lam/Gss));
+                if (exist('Gss_str') && ~exist('Gss_vec'))
+                    Gss = eval(Qs0.Gss);
+                    lam = 1-Gss;
+                elseif (exist('Gss_str') && exist('Gss_vec'))
+                    Gss = eval(Qs0.Gss(t));
+                    lam = 1-Gss;
+                elseif (~exist('Gss_str') && exist('Gss_vec'))
+                    Gss = Qs0.Gss(t);
+                    lam = 1-Gss;
                 endif
-                
+
                 Qs0.G = Qs0.G + Gss * (err*err' - Qs0.G);
                 Gss_Mtrx(t) = Gss;
+                
             endif
 
 
@@ -663,7 +771,7 @@ function [Y, ISS, X, Qs, StabCheck, ISS_Mtrx, X_Mtrx, Qs_Mtrx,Gss_Mtrx] = \
             ##  extract those parts that can be calulated outside of this
             ##  loop; this is really only Mt_B and Dt_D)
             ##
-            if (obs_avail)
+            if (obs_avail && nv>0)
                 for i=1:length(Av_cidx)
                     Mt_A(Av_cidx(i),i) = X0(ceil(Av_idx/n)(i));
                 endfor
@@ -695,7 +803,7 @@ function [Y, ISS, X, Qs, StabCheck, ISS_Mtrx, X_Mtrx, Qs_Mtrx,Gss_Mtrx] = \
             ##
             ## Update L gain matrix
             ##
-            if (obs_avail)
+            if (obs_avail && nv>0)
                 S = Qs0.Psi' * Qs0.P * Qs0.Psi + lam * Qs0.G;
                 L = Qs0.P * Qs0.Psi * inv(S);
             endif
@@ -703,7 +811,7 @@ function [Y, ISS, X, Qs, StabCheck, ISS_Mtrx, X_Mtrx, Qs_Mtrx,Gss_Mtrx] = \
             ##
             ## Calculate theta(t) and update ISS0.*
             ##
-            if (obs_avail)
+            if (obs_avail && nv>0)
                 theta_old = theta;
                 theta = theta + L * err;
 
@@ -726,11 +834,12 @@ function [Y, ISS, X, Qs, StabCheck, ISS_Mtrx, X_Mtrx, Qs_Mtrx,Gss_Mtrx] = \
 
 
                 for i=1:maxStabCheck
-                    if (~ is_stable([ISS0.A-ISS0.K*ISS0.C], 200*eps, 1))
+                    ## Don't even let this thing get close to unstable
+                    if (~ is_stable([ISS0.A-ISS0.K*ISS0.C], 1e-6, 1))
 
 
                         if (i==1) printf ("\n"); endif
-                        printf ("\r t = %d;  i = %d",t,i);
+                        printf ("\r t = %d; Gss = %f i = %d",t,Gss,i);
                         fflush (stdout);
                         #eig([ISS0.A-ISS0.K*ISS0.C])
                         #keyboard("\ninloop; unstable > ");
@@ -766,16 +875,17 @@ function [Y, ISS, X, Qs, StabCheck, ISS_Mtrx, X_Mtrx, Qs_Mtrx,Gss_Mtrx] = \
             endif # (another obs_avail block)
             
             ##
-            ## Update P
+            ## Update P (I'm not sure if P should be left as-is if no
+            ##           observations are available or not)
             ##
-            if (obs_avail)
+            if (obs_avail && nv>0)
                 Qs0.P = 1/lam * (Qs0.P - L * S * L') + Qv;
             endif
             
             ##
             ## Calculate next state X(t+1)
             ##
-            if (obs_avail)
+            if (obs_avail || multistep)
                 if (ins_avail)
                     X0 = ISS0.A * X0 + ISS0.B * uobs(t,:)' + ISS0.K * err;
                 else
@@ -793,7 +903,7 @@ function [Y, ISS, X, Qs, StabCheck, ISS_Mtrx, X_Mtrx, Qs_Mtrx,Gss_Mtrx] = \
             ##
             ## Update W 
             ## 
-            if (obs_avail)
+            if (obs_avail && nv>0)
                 Qs0.W = (ISS0.A-ISS0.K*ISS0.C) * Qs0.W + Mt - ISS0.K*Dt;
             endif
 
@@ -802,7 +912,7 @@ function [Y, ISS, X, Qs, StabCheck, ISS_Mtrx, X_Mtrx, Qs_Mtrx,Gss_Mtrx] = \
             ## (I don't really understand this, but calculate Dt here instead of
             ##  *before* the Qs0.W update according to Ljung (1983))
             ##
-            if (obs_avail)
+            if (obs_avail && nv>0)
                 for i=1:length(Cv_cidx)
                     Dt_C(Cv_cidx(i),i) = X0(ceil(Cv_idx/ny)(i));
                 endfor
@@ -826,15 +936,19 @@ function [Y, ISS, X, Qs, StabCheck, ISS_Mtrx, X_Mtrx, Qs_Mtrx,Gss_Mtrx] = \
             ##
             ## Update Psi
             ##
-            if (obs_avail)
+            if (obs_avail && nv>0)
                 Qs0.Psi = Qs0.W' * ISS0.C' + Dt';
             endif
            
-            #if (mod(t,100)==0)
-            #    sys=ss(ISS0.A,ISS0.B,ISS0.C,ISS0.D,1);
-            #    impulse(sys,1,25);
-            #    eval(sprintf("keyboard(\"\\nInside Loop (%d)> \")",t)); 
-            #endif
+            ##
+            ## Update lam and Gss if necessary
+            ##
+            if (~exist('Gss_vec') && ~exist('Gss_str') && nv>0)
+                ## these variables should all be set if we get inside this block
+                lam=lam0*lam+(lamt-lamt*lam0);
+                Gss = 1/(1+(lam/Gss));
+            endif
+            
             
             
             ##
@@ -869,6 +983,9 @@ function [Y, ISS, X, Qs, StabCheck, ISS_Mtrx, X_Mtrx, Qs_Mtrx,Gss_Mtrx] = \
                 
             endif
 
+        if (~mod(t,1000))
+            #keyboard('EKF_ISS (inside loop) > ');
+        endif
 
         endfor
         
