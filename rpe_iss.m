@@ -249,8 +249,8 @@
 ### Qs_Mtrx    - This "column" vector holds a time series of structures containing the
 ###              covariance matrices, and is only accumulated if asked for since it
 ###              can potentially use a tremendous amount of memory.  In fact, these
-###              matrices can get SO big, the structures will only contain P, W, and Psi
-###              IF otherwise useless corresponding shadow matrices Pss, Wss, and Psiss
+###              matrices can get SO big, the structures will contain P, W, and Psi if
+###              and only if the corresponding shadow matrices Pss, Wss, and Psiss
 ###              were included in Qs0.
 ###              
 ###              Note7:    Really, I mean it, be careful with Pss, Wss, and Psiss!  For
@@ -263,6 +263,14 @@
 ###                       state space polynomial matrices, just those required for
 ###                       canonical observable form)
 ###
+###              Note8:    Experimenting:  If Qs0.* is sparse, only determine those
+###                      elements on the LHS of the equation that existed previously.
+###                      This means that we can't use standard matrix operations, but
+###                      must rather loop over each valid entry for the LHS, and do the
+###                      row/column multiplication manually, likely slowing down things
+###                      considerably, but saving tremendous amounts of memory.
+###                      Status:  Not yet implemented
+###
 
 function [Y, ISS, X, Qs, StabCheck, ISS_Mtrx, X_Mtrx, Qs_Mtrx,Gss_Mtrx] = \
         rpe_iss (uobs, yobs, ISS0, X0, Qs0, maxStabCheck)
@@ -272,7 +280,8 @@ function [Y, ISS, X, Qs, StabCheck, ISS_Mtrx, X_Mtrx, Qs_Mtrx,Gss_Mtrx] = \
             error("\nNot input enough parameters\n");
         elseif (nargin > 6)
             error("\nToo many input parameters\n");
-        elseif (nargin == 2)
+        elseif (nargin == 2 ||
+                (nargin == 6 && isempty(ISS0) && isempty(X0) && isempty(Qs0)) )
                 
         ##
         ##  Assume default ISS0, X0, Qs0, and maxStabCheck values
@@ -409,7 +418,7 @@ function [Y, ISS, X, Qs, StabCheck, ISS_Mtrx, X_Mtrx, Qs_Mtrx,Gss_Mtrx] = \
         ##
         if (~ exist('X0'))
             X0=zeros(n,1);
-        elseif (~ ismatrix(X0))
+        elseif (isempty(X0))
             X0 = zeros(n,1);
         endif
         if (size(X0) ~= [n,1])
@@ -482,7 +491,7 @@ function [Y, ISS, X, Qs, StabCheck, ISS_Mtrx, X_Mtrx, Qs_Mtrx,Gss_Mtrx] = \
         ## algorithm to start with a forgetting factor of 0.9 and exponentially
         ## approach 1 at a rate defined by lam0.
         ##
-        lam0=0.95;
+        lam0=0.99;
         lam=0.9;
         Gss=.1;
         
@@ -490,32 +499,42 @@ function [Y, ISS, X, Qs, StabCheck, ISS_Mtrx, X_Mtrx, Qs_Mtrx,Gss_Mtrx] = \
 
         ##
         ## OK, now that all the inputs have been checked and/or set to defaul values
-        ## extract theta vector and parameter variances from ISS0
+        ## extract theta vector and parameter variances from ISS0 (For some reason I
+        ##  don't understand, if a zero-size matrix is returned from "find", sometimes
+        ##  its size is (0,1) and sometimes its size is (1,0); the following weirdness
+        ##  ensures consistency)
         ##
-        Av_idx = find(~ isnan(ISS0.Av));
-        Bv_idx = find(~ isnan(ISS0.Bv));
-        Kv_idx = find(~ isnan(ISS0.Kv));
-        Cv_idx = find(~ isnan(ISS0.Cv));
+        Av_idx = find(~ isnan(ISS0.Av));        
+        Bv_idx = find(~ isnan(ISS0.Bv));        
+        Kv_idx = find(~ isnan(ISS0.Kv));        
+        Cv_idx = find(~ isnan(ISS0.Cv));        
         Dv_idx = find(~ isnan(ISS0.Dv));
 
-        theta = [ISS0.A(Av_idx);
-                 ISS0.B(Bv_idx);
-                 ISS0.K(Kv_idx);
-                 ISS0.C(Cv_idx);
-                 ISS0.D(Dv_idx)];
+        tA=ISS0.A(Av_idx);
+        tB=ISS0.B(Bv_idx);
+        tK=ISS0.K(Kv_idx);
+        tC=ISS0.C(Cv_idx);
+        if (size(tC,2)~=1) tC=tC'; endif
+        tD=ISS0.D(Dv_idx);
+        if (size(tD,2)~=1) tD=tD'; endif
+
+
+        theta = [tA;tB;tK;tC;tD];
 
         ##
         ## Set up a process noise covariance matrix using non-NaN values from ISS0 matrices
         ##
-        Qv =    [ISS0.Av(Av_idx);
-                 ISS0.Bv(Bv_idx);
-                 ISS0.Kv(Kv_idx);
-                 ISS0.Cv(Cv_idx);  # need to fix it so that size(*_idx) always returns [1 0]
-                 ISS0.Dv(Dv_idx)]; # instead of [0 1] for zero-matrices
-        Qv = diag(Qv);             # perhaps someday we can modify this to allow non-diagonal
-                                   # Qv matrices, but this should suffice for now
+        tAv=ISS0.Av(Av_idx);
+        tBv=ISS0.Bv(Bv_idx);
+        tKv=ISS0.Kv(Kv_idx);
+        tCv=ISS0.Cv(Cv_idx);
+        if (size(tCv,2)~=1) tCv=tCv'; endif
+        tDv=ISS0.Dv(Dv_idx);
+        if (size(tDv,2)~=1) tDv=tDv'; endif
 
-                 
+        Qv = diag([tAv;tBv;tKv;tCv;tDv]); # perhaps someday we can modify this to allow
+                                          # non-digonal Qv matrices
+
         
         ##
         ##  Convert fortran-style indices to column wise indexes, outside of
@@ -632,6 +651,7 @@ function [Y, ISS, X, Qs, StabCheck, ISS_Mtrx, X_Mtrx, Qs_Mtrx,Gss_Mtrx] = \
                     lam=lam0*lam+(1-lam0);
                     Gss = 1/(1+(lam/Gss));
                 endif
+                
                 Qs0.G = Qs0.G + Gss * (err*err' - Qs0.G);
                 Gss_Mtrx(t) = Gss;
             endif
@@ -767,8 +787,9 @@ function [Y, ISS, X, Qs, StabCheck, ISS_Mtrx, X_Mtrx, Qs_Mtrx,Gss_Mtrx] = \
                 else
                     X0 = ISS0.A * X0;
                 endif
-            endif        
+            endif
             
+
             ##
             ## Update W 
             ## 
@@ -779,7 +800,7 @@ function [Y, ISS, X, Qs, StabCheck, ISS_Mtrx, X_Mtrx, Qs_Mtrx,Gss_Mtrx] = \
             ##
             ## Determine the derivative Dt (d/dtheta(Cx+Du))
             ## (I don't really understand this, but calculate Dt here instead of
-            ##  *before* the Qs0.W update)
+            ##  *before* the Qs0.W update according to Ljung (1983))
             ##
             if (obs_avail)
                 for i=1:length(Cv_cidx)
