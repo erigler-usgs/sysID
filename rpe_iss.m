@@ -424,7 +424,7 @@ function [Y, ISS, X, Qs, StabCheck, ISS_Mtrx, X_Mtrx, Qs_Mtrx,Gss_Mtrx] = \
                     error("\nThe A shadow matrix must have same dimension as A matrix\n");
                 endif
             else
-                ISS0.Av = nans*zeros(size(ISS0.A));
+                ISS0.Av = nan*zeros(size(ISS0.A));
             endif
             
             if (isfield(ISS0,'Bv') )
@@ -432,7 +432,7 @@ function [Y, ISS, X, Qs, StabCheck, ISS_Mtrx, X_Mtrx, Qs_Mtrx,Gss_Mtrx] = \
                     error("\nThe B shadow matrix must have same dimension as B matrix\n");
                 endif
             else
-                ISS0.Bv = nans*zeros(size(ISS0.B));
+                ISS0.Bv = nan*zeros(size(ISS0.B));
             endif
             
             if (isfield(ISS0,'Kv') )
@@ -440,7 +440,7 @@ function [Y, ISS, X, Qs, StabCheck, ISS_Mtrx, X_Mtrx, Qs_Mtrx,Gss_Mtrx] = \
                     error("\nThe K shadow matrix must have same dimension as K matrix\n");
                 endif
             else
-                ISS0.Kv = nans*zeros(size(ISS0.K));
+                ISS0.Kv = nan*zeros(size(ISS0.K));
             endif
             
             if (isfield(ISS0,'Cv') )
@@ -448,7 +448,7 @@ function [Y, ISS, X, Qs, StabCheck, ISS_Mtrx, X_Mtrx, Qs_Mtrx,Gss_Mtrx] = \
                     error("\nThe C shadow matrix must have same dimension as C matrix\n");
                 endif
             else
-                ISS0.Cv = nans*zeros(size(ISS0.C));
+                ISS0.Cv = nan*zeros(size(ISS0.C));
             endif
             
             if (isfield(ISS0,'Dv') )
@@ -456,7 +456,7 @@ function [Y, ISS, X, Qs, StabCheck, ISS_Mtrx, X_Mtrx, Qs_Mtrx,Gss_Mtrx] = \
                     error("\nThe D shadow matrix must have same dimension as D matrix\n");
                 endif
             else
-                ISS0.Dv = nans*zeros(size(ISS0.D));
+                ISS0.Dv = nan*zeros(size(ISS0.D));
             endif
 
 
@@ -689,7 +689,7 @@ function [Y, ISS, X, Qs, StabCheck, ISS_Mtrx, X_Mtrx, Qs_Mtrx,Gss_Mtrx] = \
         endif
         
         if (nargout > 8)
-            Gss_mtrx = zeros(rows(yobs),1);
+            Gss_Mtrx = zeros(rows(yobs),1);
         endif
         
 
@@ -700,53 +700,64 @@ function [Y, ISS, X, Qs, StabCheck, ISS_Mtrx, X_Mtrx, Qs_Mtrx,Gss_Mtrx] = \
       ### Start main loop                ###
        ##                                ##
         ##################################
-        multistep=1
-        keyboard ('Before Loop > ');
+        yvec=zeros(ny,1);
+        err=zeros(ny,1);
+        uvec=zeros(nu,1);
+        sim_err=0;
+        #keyboard ('Before Loop > ');
         for t=1:rows(yobs)
             
             ##
-            ## Check if input or output is available for this time step
+            ## Check if input or output is available for this time step;
+            ## replace NaN's with zeros in the data vectors
             ##
-            obs_avail = ~ any(isnan(yobs(t,:)) );
-            ins_avail = ~ any(isnan(uobs(t,:)) );
+            yvec(:)=0;
+            obs_avail = find( ~isnan(yobs(t,:)) );
+            yvec(obs_avail)=yobs(t,obs_avail);
             
+            uvec(:)=0;
+            ins_avail = find( ~isnan(uobs(t,:)) );
+            uvec(ins_avail) = uobs(t,ins_avail);
             
             ##
             ## Determine observables and calculate error vector
             ##
-            if (ins_avail)
-                yhat = ISS0.C * X0 + ISS0.D * uobs(t,:)';
-            else
-                yhat = ISS0.C * X0;
-            endif
+            yhat = ISS0.C * X0 + ISS0.D * uvec;
             
-            if (obs_avail)
-                err = yobs(t,:)' - yhat;
-            else
-                ## if calculating err becomes too computationally
-                ## burdensome, place another if block here; otherwise
-                ## none of the subsequent calculations will use it
-                ## anyway unless multistep is set, EXCEPT the state
-                ## propogation
+
+            ##
+            ## If sim_err is true, spatially correlated random noise
+            ## vectors will be generated and used as simulated errors
+            ## when outputs are not available for residual calculation
+            ## (i.e. when the output is a NaN).  If sim_err is false
+            ## the errors associated with missing output data points are
+            ## simply set to zero.  If all the outputs are missing for a 
+            ## particular time step, this means a completely deterministic
+            ## propogation of the state across the data gap.
+            ## 
+            if (sim_err)
                 if (isdefinite(Qs0.G,1e-9))
-                #if(0) # something wrong with chol.oct
+                #if(0) # something wrong with chol.oct; it doesn't always agree on what PosDef is
                     ## this implies that errs are correlated and should
                     ## be used if possible
                     R = chol(Qs0.G);
                     err = R * randn(ny,1);
                 else
-                    ## if innovations covariance is not PosDef, simply
-                    ## assume that errors are independent with zero-mean
+                    ## if innovations covariance is not PosDef, assume
+                    ## that errors are spatially independent with zero-mean
                     err = sqrt(diag(Qs0.G)) .* randn(ny,1);
                 endif
+            else
+                err(:)=0;
             endif
-            
-            
+            err(obs_avail) = yvec(obs_avail) - yhat(obs_avail);
+
+
             ##
             ## Update innovations covariance (determine gain (GSS)
             ##  and forgetting factor (lam) first)
             ##
-            if (obs_avail && nv>0)
+            if (nv>0)
                 
                 if (exist('Gss_str') && ~exist('Gss_vec'))
                     Gss = eval(Qs0.Gss);
@@ -757,6 +768,15 @@ function [Y, ISS, X, Qs, StabCheck, ISS_Mtrx, X_Mtrx, Qs_Mtrx,Gss_Mtrx] = \
                 elseif (~exist('Gss_str') && exist('Gss_vec'))
                     Gss = Qs0.Gss(t);
                     lam = 1-Gss;
+                endif
+
+                if (~exist('Gss_vec') && ~exist('Gss_str') && t>1)
+                    ## this update is a slightly modified version of the algorithm
+                    ## found on p279 of Ljung&Soderstom (1983);
+                    ## this update should not be performed at t==1;
+                    ## these variables should all be set if we get inside this block
+                    lam=lam0*lam+(lamt-lamt*lam0);
+                    Gss = 1/(1+(lam/Gss));
                 endif
 
                 Qs0.G = Qs0.G + Gss * (err*err' - Qs0.G);
@@ -771,22 +791,17 @@ function [Y, ISS, X, Qs, StabCheck, ISS_Mtrx, X_Mtrx, Qs_Mtrx,Gss_Mtrx] = \
             ##  extract those parts that can be calulated outside of this
             ##  loop; this is really only Mt_B and Dt_D)
             ##
-            if (obs_avail && nv>0)
+            if (nv>0)
                 for i=1:length(Av_cidx)
                     Mt_A(Av_cidx(i),i) = X0(ceil(Av_idx/n)(i));
                 endfor
                 if ismatrix(Mt_A)  # If zero-length matrix, don't do anything
                     Mt(1:numel(Mt_A)) = Mt_A(:);
                 endif
-                
-                if (ins_avail)
-                    for i=1:length(Bv_cidx)
-                        Mt_B(Bv_cidx(i),i) = uobs(t,ceil(Bv_idx/n)(i));
-                    endfor
-                else
-                    Mt_B(:) = 0; # Not sure if this is correct approach or not
-                endif
-                
+
+                for i=1:length(Bv_cidx)
+                    Mt_B(Bv_cidx(i),i) = uvec(ceil(Bv_idx/n)(i));
+                endfor
                 if ismatrix(Mt_B)  # If zero-length matrix, don't do anything
                     Mt(numel(Mt_A)+1:numel(Mt_A)+numel(Mt_B)) = Mt_B(:);
                 endif
@@ -803,7 +818,7 @@ function [Y, ISS, X, Qs, StabCheck, ISS_Mtrx, X_Mtrx, Qs_Mtrx,Gss_Mtrx] = \
             ##
             ## Update L gain matrix
             ##
-            if (obs_avail && nv>0)
+            if (nv>0)
                 S = Qs0.Psi' * Qs0.P * Qs0.Psi + lam * Qs0.G;
                 L = Qs0.P * Qs0.Psi * inv(S);
             endif
@@ -811,7 +826,7 @@ function [Y, ISS, X, Qs, StabCheck, ISS_Mtrx, X_Mtrx, Qs_Mtrx,Gss_Mtrx] = \
             ##
             ## Calculate theta(t) and update ISS0.*
             ##
-            if (obs_avail && nv>0)
+            if (nv>0)
                 theta_old = theta;
                 theta = theta + L * err;
 
@@ -831,20 +846,24 @@ function [Y, ISS, X, Qs, StabCheck, ISS_Mtrx, X_Mtrx, Qs_Mtrx,Gss_Mtrx] = \
                     ISS0.D(Dv_idx) = theta(numel(Av_idx)+numel(Bv_idx)+numel(Kv_idx)+numel(Cv_idx)+find(Dv_idx));
                 endif
 
-
-
+                printf ("\r t = %d; Gss = %f",t,Gss);
+                fflush (stdout);
                 for i=1:maxStabCheck
                     ## Don't even let this thing get close to unstable
                     if (~ is_stable([ISS0.A-ISS0.K*ISS0.C], 1e-6, 1))
 
 
-                        if (i==1) printf ("\n"); endif
+                        #if (i==1) printf ("\n"); endif
                         printf ("\r t = %d; Gss = %f i = %d",t,Gss,i);
                         fflush (stdout);
                         #eig([ISS0.A-ISS0.K*ISS0.C])
                         #keyboard("\ninloop; unstable > ");
 
-                        theta = theta_old + (.5 * (theta-theta_old));
+                        if (i==maxStabCheck)
+                            theta=theta_old; # No update at all
+                        else
+                            theta = theta_old + (.5 * (theta-theta_old));
+                        endif
 
                         if ismatrix(Av_idx)
                             ISS0.A(Av_idx) = theta(find(Av_idx));
@@ -865,12 +884,13 @@ function [Y, ISS, X, Qs, StabCheck, ISS_Mtrx, X_Mtrx, Qs_Mtrx,Gss_Mtrx] = \
                         StabCheck(t) = -i;
 
                     else
-
                         StabCheck(t) = i;
                         break;
 
                     endif
                 endfor
+                if (i~=1) printf ("\n"); endif
+                fflush (stdout);
 
             endif # (another obs_avail block)
             
@@ -878,32 +898,20 @@ function [Y, ISS, X, Qs, StabCheck, ISS_Mtrx, X_Mtrx, Qs_Mtrx,Gss_Mtrx] = \
             ## Update P (I'm not sure if P should be left as-is if no
             ##           observations are available or not)
             ##
-            if (obs_avail && nv>0)
+            if (nv>0)
                 Qs0.P = 1/lam * (Qs0.P - L * S * L') + Qv;
             endif
             
             ##
             ## Calculate next state X(t+1)
             ##
-            if (obs_avail || multistep)
-                if (ins_avail)
-                    X0 = ISS0.A * X0 + ISS0.B * uobs(t,:)' + ISS0.K * err;
-                else
-                    X0 = ISS0.A * X0 + ISS0.K * err;
-                endif
-            else
-                if (ins_avail)
-                    X0 = ISS0.A * X0 + ISS0.B * uobs(t,:)';
-                else
-                    X0 = ISS0.A * X0;
-                endif
-            endif
+            X0 = ISS0.A * X0 + ISS0.B * uvec + ISS0.K * err;
             
 
             ##
             ## Update W 
             ## 
-            if (obs_avail && nv>0)
+            if (nv>0)
                 Qs0.W = (ISS0.A-ISS0.K*ISS0.C) * Qs0.W + Mt - ISS0.K*Dt;
             endif
 
@@ -912,22 +920,18 @@ function [Y, ISS, X, Qs, StabCheck, ISS_Mtrx, X_Mtrx, Qs_Mtrx,Gss_Mtrx] = \
             ## (I don't really understand this, but calculate Dt here instead of
             ##  *before* the Qs0.W update according to Ljung (1983))
             ##
-            if (obs_avail && nv>0)
+            if (nv>0)
                 for i=1:length(Cv_cidx)
                     Dt_C(Cv_cidx(i),i) = X0(ceil(Cv_idx/ny)(i));
                 endfor
                 if ismatrix(Dt_C)  # If zero-length matrix, don't do anything
                     Dt((ny*nv)-numel(Dt_D)-numel(Dt_C)+1:(ny*nv)-numel(Dt_D)) = Dt_C(:); 
                 endif
-                
-                if (ins_avail)
-                    for i=1:length(Dv_cidx)
-                        Dt_D(Dv_cidx(i),i) = uobs(t,ceil(Dv_idx/ny)(i));
-                    endfor
-                else
-                    Dt_D(:) = 0; # Not sure if this is correct approach or not
-                endif
-                
+
+                for i=1:length(Dv_cidx)
+                    Dt_D(Dv_cidx(i),i) = uvec(ceil(Dv_idx/ny)(i));
+                endfor
+
                 if ismatrix(Dt_D)  # If zero-length matrix, don't do anything
                     Dt((ny*nv)-numel(Dt_D)+1:(ny*nv)) = Dt_D(:);
                 endif
@@ -936,19 +940,9 @@ function [Y, ISS, X, Qs, StabCheck, ISS_Mtrx, X_Mtrx, Qs_Mtrx,Gss_Mtrx] = \
             ##
             ## Update Psi
             ##
-            if (obs_avail && nv>0)
+            if (nv>0)
                 Qs0.Psi = Qs0.W' * ISS0.C' + Dt';
-            endif
-           
-            ##
-            ## Update lam and Gss if necessary
-            ##
-            if (~exist('Gss_vec') && ~exist('Gss_str') && nv>0)
-                ## these variables should all be set if we get inside this block
-                lam=lam0*lam+(lamt-lamt*lam0);
-                Gss = 1/(1+(lam/Gss));
-            endif
-            
+            endif            
             
             
             ##
@@ -971,6 +965,7 @@ function [Y, ISS, X, Qs, StabCheck, ISS_Mtrx, X_Mtrx, Qs_Mtrx,Gss_Mtrx] = \
             
             if (nargout > 7)
                 Qs_Mtrx(t).G = Qs0.G;
+                Qs_Mtrx(t).Gss = Gss;
                 if (isfield(Qs0,'Wss') )
                     Qs_Mtrx(t).W = Qs0.W;
                 endif
@@ -982,14 +977,19 @@ function [Y, ISS, X, Qs, StabCheck, ISS_Mtrx, X_Mtrx, Qs_Mtrx,Gss_Mtrx] = \
                 endif
                 
             endif
-
-        if (~mod(t,1000))
-            #keyboard('EKF_ISS (inside loop) > ');
-        endif
-
+            
+            
+            
+            
         endfor
         
-        keyboard("\nEKF_ISS (after loop) > ");
-
+        ##
+        ## Put the last Gss back into Qs (it's already in Qs_Mtrx)
+        ## consider cleaning this up some day, it's kind of ugly, even if
+        ## it doesn't really slow anything down
+        ##
+        Qs.Gss(1) = Gss;
+        #keyboard("\nEKF_ISS (after loop) > ");
+        if (nv>0) printf("\n"); endif
 
 endfunction
