@@ -72,12 +72,12 @@
 ###              be determined, the shadow matrices would be:
 ###
 ###
-###     ISS0.Av = [NaN NaN NaN NaN] ISS0.Bv = [ 0   0 ] ISS0.Kv = [ 0   0   0 ]
+###     ISS0.As = [NaN NaN NaN NaN] ISS0.Bs = [ 0   0 ] ISS0.Ks = [ 0   0   0 ]
 ###               [ 0   0   0   0 ]           [ 0   0 ]           [ 0   0   0 ]
 ###               [ 0   0   0   0 ]           [ 0   0 ]           [ 0   0   0 ]
 ###               [ 0   0   0   0 ]           [ 0   0 ]           [ 0   0   0 ]
 ###
-###     ISS0.Cv = [NaN NaN NaN NaN] ISS0.Dv = [ 0   0 ]
+###     ISS0.Cs = [NaN NaN NaN NaN] ISS0.Ds = [ 0   0 ]
 ###               [NaN NaN NaN NaN]           [ 0   0 ]
 ###               [NaN NaN NaN NaN]           [ 0   0 ]
 ###
@@ -86,12 +86,11 @@
 ###                we might have the parameters sort of decay exponentially
 ###                to the average time-stationary values.  This constitutes
 ###                a kind of Gauss-Markov process, but where the background
-###                state is still determined by a set of dynamical difference
-###                equations, not some static or quasi-static climatology.
+###                state is still determined by a set of dynamical equations,
+###                not some static or quasi-static climatology.
 ###                  For now, we simply do not update the parameters when there
 ###                are no observations from which to calculate residuals, and
-###                thus determine the appropriate update.
-###                -EJR (10/21/04)
+###                thus determine the appropriate update.  -EJR (10/21/04)
 ###
 ###         
 ### X0         - Initial state vector of the system.  If this vector is not
@@ -188,8 +187,8 @@
 ###                     remember to be careful whether Gss is a column vector or a row
 ###                     vector, it matters!
 ###
-###              Note3:   Shadow variables Pss, Wss, and Psiss may actually be
-###                     set but only have meaning if Qs_Mtrx is requested as an
+###              Note3:   The variables Pss, Wss, and Psiss may actually also be
+###                     set, but only have meaning if Qs_Mtrx is requested as an
 ###                     output.  If this is the case, each P, W, and Psi
 ###                     will be accumulated and returned to the user.  THIS CAN
 ###                     VERY EASILY USE UP ALL AVAILABLE MEMORY SO BE CAREFUL!
@@ -312,16 +311,16 @@ function [Y, ISS, X, Qs, StabCheck, ISS_Mtrx, X_Mtrx, Qs_Mtrx,Gss_Mtrx] = \
             
             ISS0.A = zeros(n,n);
             #for i=1:n for j=1:n if j==i+1 ISS0.A(i,j)=1; endif; endfor; endfor;
-            ISS0.Av = zeros(n,n);       # no process noise for A
-            #for i=1:n for j=1:n if i~=n ISS0.Av(i,j)=NaN; endif; endfor; endfor;
+            ISS0.As = zeros(n,n);       # no process noise for A
+            #for i=1:n for j=1:n if i~=n ISS0.As(i,j)=NaN; endif; endfor; endfor;
             ISS0.B = zeros(n,nu);
-            ISS0.Bv = zeros(n,nu);      # no process noise for B
+            ISS0.Bs = zeros(n,nu);      # no process noise for B
             ISS0.K = zeros(n,ny);
-            ISS0.Kv = zeros(n,ny);      # no process noise for K
+            ISS0.Ks = zeros(n,ny);      # no process noise for K
             ISS0.C = eye(ny,n);
-            ISS0.Cv = nan*eye(ny,n);    # fix parameters for C
+            ISS0.Cs = nan*eye(ny,n);    # fix parameters for C
             ISS0.D = zeros(ny,nu);
-            ISS0.Dv = nan*zeros(ny,nu); # fix parameters for D
+            ISS0.Ds = nan*zeros(ny,nu); # fix parameters for D
             
         elseif (nargin == 3 && isscalar(ISS0) ||
                 (nargin == 6 && isscalar(ISS0)) )
@@ -349,21 +348,21 @@ function [Y, ISS, X, Qs, StabCheck, ISS_Mtrx, X_Mtrx, Qs_Mtrx,Gss_Mtrx] = \
             endfor;
             ## Place adjustable parameters in last n-ny rows
             ISS0.A(n-ny+1:n,:) = 0;
-            ISS0.Av = zeros(n,n);
-            ISS0.Av(find(any(ISS0.A,2)),:) = NaN;
+            ISS0.As = zeros(n,n);
+            ISS0.As(find(any(ISS0.A,2)),:) = NaN;
             ISS0.B = zeros(n,nu);
-            ISS0.Bv = zeros(n,nu);
+            ISS0.Bs = zeros(n,nu);
             ISS0.K = zeros(n,ny);
-            ISS0.Kv = zeros(n,ny);
+            ISS0.Ks = zeros(n,ny);
             ISS0.C = zeros(ny,n);
             ISS0.C(1,1) = 1;
             r=find(~any(ISS0.A,2));
             for i=2:length(r)
                 ISS0.C(i,r(i-1)+1)=1;
             endfor
-            ISS0.Cv = nan*ISS0.C;
+            ISS0.Cs = nan*ISS0.C;
             ISS0.D = zeros(ny,nu);
-            ISS0.Dv = nan*ISS0.D;
+            ISS0.Ds = nan*ISS0.D;
             
         endif
             
@@ -419,59 +418,140 @@ function [Y, ISS, X, Qs, StabCheck, ISS_Mtrx, X_Mtrx, Qs_Mtrx,Gss_Mtrx] = \
             ## not called to identify optimal parameters, but simply to filter some data,
             ## and set all shadow elements to NaNs
             ##
-            if (isfield(ISS0,'Av') )
-                if any(size(ISS0.A) ~= size(ISS0.Av) )
+            if (isfield(ISS0,'As') && iscell(ISS0.As))
+                if any(size(ISS0.A) ~= size(ISS0.As) )
                     error("\nThe A shadow matrix must have same dimension as A matrix\n");
                 endif
             else
-                ISS0.Av = nan*zeros(size(ISS0.A));
+                ISS0.As = cell(size(ISS0.A));
+                ISS0.As(:)=nan;
             endif
             
-            if (isfield(ISS0,'Bv') )
-                if any(size(ISS0.B) ~= size(ISS0.Bv))
+            if (isfield(ISS0,'Bs') && iscell(ISS0.Bs))
+                if any(size(ISS0.B) ~= size(ISS0.Bs))
                     error("\nThe B shadow matrix must have same dimension as B matrix\n");
                 endif
             else
-                ISS0.Bv = nan*zeros(size(ISS0.B));
+                ISS0.Bs = cell(size(ISS0.B));
+                ISS0.Bs(:)=nan;
             endif
             
-            if (isfield(ISS0,'Kv') )
-                if any(size(ISS0.K) ~= size(ISS0.Kv))
+            if (isfield(ISS0,'Ks') && iscell(ISS0.Ks))
+                if any(size(ISS0.K) ~= size(ISS0.Ks))
                     error("\nThe K shadow matrix must have same dimension as K matrix\n");
                 endif
             else
-                ISS0.Kv = nan*zeros(size(ISS0.K));
+                ISS0.Ks = cell(size(ISS0.K));
+                ISS0.Ks(:)=nan;
             endif
             
-            if (isfield(ISS0,'Cv') )
-                if any(size(ISS0.C) ~= size(ISS0.Cv))
+            if (isfield(ISS0,'Cs') && iscell(ISS0.Cs))
+                if any(size(ISS0.C) ~= size(ISS0.Cs))
                     error("\nThe C shadow matrix must have same dimension as C matrix\n");
                 endif
             else
-                ISS0.Cv = nan*zeros(size(ISS0.C));
+                ISS0.Cs = cell(size(ISS0.C));
+                ISS0.Cs(:)=nan;
             endif
             
-            if (isfield(ISS0,'Dv') )
-                if any(size(ISS0.D) ~= size(ISS0.Dv))
+            if (isfield(ISS0,'Ds') && iscell(ISS0.Ds))
+                if any(size(ISS0.D) ~= size(ISS0.Ds))
                     error("\nThe D shadow matrix must have same dimension as D matrix\n");
                 endif
             else
-                ISS0.Dv = nan*zeros(size(ISS0.D));
+                ISS0.Ds = cell(size(ISS0.D));
+                ISS0.Ds(:)=nan;
             endif
 
 
         endif
         
-        
+
         ##
-        ## Now, it's necessary to determine the number of adjustable parameters
-        ## (there must be a better way, but I don't know it)
-        nv=0; 
-        for [val,key] = ISS0 
-            if (key(end)=='v')
-                nv = nv+numel(find(~ isnan(val)));
-            endif; 
+        ## Generate indices for different types of parameters based on shadow matrices.
+        ## *v_idx corresponds to non-NaN scalars that specify the "variance" of an adjustable
+        ## paramter in ISS0.*; *f_idx corresponds to strings that can be evaluated to provide
+        ## a "functional" form of the time-variable parameter (i.e., "-1*ISS0.K(3)" or "1/t"
+        ##  or even "if (~exist(tmp)) tmp=0; tmp=tmp+1;"...the latter takes into account
+        ##  that the eval function returns results only from last expression in the string);
+        ## *n_idx corresponds to the NaN found in the shadow matrices, and has no real use
+        ## at the present time.
+        ##
+        Av_idx=[]; Af_idx=[]; An_idx=[];
+        for i=1:numel(ISS0.As)
+            if (isstr(ISS0.As{i}))
+                Af_idx = [Af_idx,i];
+            elseif (~isnan(ISS0.As{i}) && isscalar(ISS0.As{i}) )
+                Av_idx = [Av_idx,i];
+            elseif (isnan(ISS0.As{i}))
+                # I don't know if we need this, but we might as well store it
+                An_idx = [An_idx,i];
+            else
+                error("Bad shadow matrix element in ISS0.As; it should be a scalar, a NaN, or a string");
+            endif    
         endfor
+
+        Bv_idx=[]; Bf_idx=[]; Bn_idx=[];
+        for i=1:numel(ISS0.Bs)
+            if (isstr(ISS0.Bs{i}))
+                Bf_idx = [Bf_idx,i];
+            elseif (~isnan(ISS0.Bs{i}) && isscalar(ISS0.Bs{i}) )
+                Bv_idx = [Bv_idx,i];
+            elseif (isnan(ISS0.Bs{i}))
+                # I don't know if we need this, but we might as well store it
+                Bn_idx = [Bn_idx,i];
+            else
+                error("Bad shadow matrix element in ISS0.Bs; it should be a scalar, a NaN, or a string");
+            endif    
+        endfor
+
+        Kv_idx=[]; Kf_idx=[]; Kn_idx=[];
+        for i=1:numel(ISS0.Ks)
+            if (isstr(ISS0.Ks{i}))
+                Kf_idx = [Kf_idx,i];            
+            elseif (~isnan(ISS0.Ks{i}) && isscalar(ISS0.Ks{i}) )
+                Kv_idx = [Kv_idx,i];
+            elseif (isnan(ISS0.Ks{i}))
+                # I don't know if we need this, but we might as well store it
+                Kn_idx = [Kn_idx,i];
+            else
+                error("Bad shadow matrix element in ISS0.Ks; it should be a scalar, a NaN, or a string");
+            endif    
+        endfor
+
+        Cv_idx=[]; Cf_idx=[]; Cn_idx=[];
+        for i=1:numel(ISS0.Cs)
+            if (isstr(ISS0.Cs{i}))
+                Cf_idx = [Cf_idx,i];
+            elseif (~isnan(ISS0.Cs{i}) && isscalar(ISS0.Cs{i}) )
+                Cv_idx = [Cv_idx,i];
+            elseif (isnan(ISS0.Cs{i}))
+                # I don't know if we need this, but we might as well store it
+                Cn_idx = [Cn_idx,i];
+            else
+                error("Bad shadow matrix element in ISS0.Cs; it should be a scalar, a NaN, or a string");
+            endif    
+        endfor
+
+        Dv_idx=[]; Df_idx=[]; Dn_idx=[];
+        for i=1:numel(ISS0.Ds)
+            if (isstr(ISS0.Ds{i}))
+                Df_idx = [Df_idx,i];
+            elseif (~isnan(ISS0.Ds{i}) && isscalar(ISS0.Ds{i}) )
+                Dv_idx = [Dv_idx,i];
+            elseif (isnan(ISS0.Ds{i}))
+                # I don't know if we need this, but we might as well store it
+                Dn_idx = [Dn_idx,i];
+            else
+                error("Bad shadow matrix element in ISS0.Ds; it should be a scalar, a NaN, or a string");
+            endif    
+        endfor
+
+                
+        ##
+        ## Determine the number of adjustable parameters
+        ## 
+        nv = length(Av_idx)+length(Bv_idx)+length(Kv_idx)+length(Cv_idx)+length(Dv_idx);
         
 
         ##
@@ -583,43 +663,33 @@ function [Y, ISS, X, Qs, StabCheck, ISS_Mtrx, X_Mtrx, Qs_Mtrx,Gss_Mtrx] = \
 
 
 
-        ##
-        ## OK, now that all the inputs have been checked and/or set to defaul values
-        ## extract theta vector and parameter variances from ISS0 (For some reason I
-        ##  don't understand, if a zero-size matrix is returned from "find", sometimes
-        ##  its size is (0,1) and sometimes its size is (1,0); the following weirdness
-        ##  ensures consistency)
-        ##
-        Av_idx = find(~ isnan(ISS0.Av));        
-        Bv_idx = find(~ isnan(ISS0.Bv));        
-        Kv_idx = find(~ isnan(ISS0.Kv));        
-        Cv_idx = find(~ isnan(ISS0.Cv));        
-        Dv_idx = find(~ isnan(ISS0.Dv));
 
+        ##
+        ## Fill up the parameter vector theta
+        ##
         tA=ISS0.A(Av_idx);
         tB=ISS0.B(Bv_idx);
         tK=ISS0.K(Kv_idx);
         tC=ISS0.C(Cv_idx);
-        if (size(tC,2)~=1) tC=tC'; endif
         tD=ISS0.D(Dv_idx);
-        if (size(tD,2)~=1) tD=tD'; endif
+
+        theta = [tA,tB,tK,tC,tD]';
 
 
-        theta = [tA;tB;tK;tC;tD];
 
         ##
-        ## Set up a process noise covariance matrix using non-NaN values from ISS0 matrices
+        ## Set up a process noise covariance matrix for the adjustable parameters 
+        ## in the ISS0 matrices (extracting values from cell arrays is a little
+        ##  strange, thus the brackets and explicit type conversion to double)
         ##
-        tAv=ISS0.Av(Av_idx);
-        tBv=ISS0.Bv(Bv_idx);
-        tKv=ISS0.Kv(Kv_idx);
-        tCv=ISS0.Cv(Cv_idx);
-        if (size(tCv,2)~=1) tCv=tCv'; endif
-        tDv=ISS0.Dv(Dv_idx);
-        if (size(tDv,2)~=1) tDv=tDv'; endif
+        tAv=double([ISS0.As{Av_idx}]);
+        tBv=double([ISS0.Bs{Bv_idx}]);
+        tKv=double([ISS0.Ks{Kv_idx}]);
+        tCv=double([ISS0.Cs{Cv_idx}]);
+        tDv=double([ISS0.Ds{Dv_idx}]);
 
-        Qv = diag([tAv;tBv;tKv;tCv;tDv]); # perhaps someday we can modify this to allow
-                                          # non-digonal Qv matrices
+        Qv = diag([tAv,tBv,tKv,tCv,tDv]'); # perhaps someday we can modify this to allow
+                                           # non-digonal Qv matrices
 
         
         ##
@@ -846,6 +916,42 @@ function [Y, ISS, X, Qs, StabCheck, ISS_Mtrx, X_Mtrx, Qs_Mtrx,Gss_Mtrx] = \
                     ISS0.D(Dv_idx) = theta(numel(Av_idx)+numel(Bv_idx)+numel(Kv_idx)+numel(Cv_idx)+find(Dv_idx));
                 endif
 
+                
+                ##
+                ## If there are any parameters that are arbitrary functions passed 
+                ## as strings in ISS0.*s, calculate and insert them here (even though
+                ##  they can be just about anything, the primary reason for this
+                ##  functionality is to allow parameters that are functions of other
+                ##  state-space model parameters (i.e., a(i)=-k(i)), so they need to
+                ##  redetermined each time an adjustable parameter might be changed)
+                ##
+                if ismatrix(Af_idx)
+                    for i=1:length(Af_idx)
+                        ISS0.A(Af_idx(i)) = eval(ISS0.As{Af_idx(i)});   
+                    endfor
+                endif
+                if ismatrix(Bf_idx)
+                    for i=1:length(Bf_idx)
+                        ISS0.B(Bf_idx(i)) = eval(ISS0.Bs{Bf_idx(i)});   
+                    endfor
+                endif
+                if ismatrix(Kf_idx)
+                    for i=1:length(Kf_idx)
+                        ISS0.K(Kf_idx(i)) = eval(ISS0.Ks{Kf_idx(i)});   
+                    endfor
+                endif
+                if ismatrix(Cf_idx)
+                    for i=1:length(Cf_idx)
+                        ISS0.C(Cf_idx(i)) = eval(ISS0.Cs{Cf_idx(i)});   
+                    endfor
+                endif
+                if ismatrix(Df_idx)
+                    for i=1:length(Df_idx)
+                        ISS0.D(Df_idx(i)) = eval(ISS0.Ds{Df_idx(i)});   
+                    endfor
+                endif
+
+
                 printf ("\r t = %d; Gss = %f",t,Gss);
                 fflush (stdout);
                 for i=1:maxStabCheck
@@ -880,6 +986,41 @@ function [Y, ISS, X, Qs, StabCheck, ISS_Mtrx, X_Mtrx, Qs_Mtrx,Gss_Mtrx] = \
                         if ismatrix(Dv_idx)
                         ISS0.D(Dv_idx) = theta(numel(Av_idx)+numel(Bv_idx)+numel(Kv_idx)+numel(Cv_idx)+find(Dv_idx));
                         endif
+
+                        ##
+                        ## If there are any parameters that are arbitrary functions passed 
+                        ## as strings in ISS0.*s, calculate and insert them here (even though
+                        ##  they can be just about anything, the primary reason for this
+                        ##  functionality is to allow parameters that are functions of other
+                        ##  state-space model parameters (i.e., a(i)=-k(i)), so they need to
+                        ##  redetermined each time an adjustable parameter might be changed)
+                        ##
+                        if ismatrix(Af_idx)
+                         for i=1:length(Af_idx)
+                             ISS0.A(Af_idx(i)) = eval(ISS0.As{Af_idx(i)});   
+                         endfor
+                        endif
+                        if ismatrix(Bf_idx)
+                         for i=1:length(Bf_idx)
+                             ISS0.B(Bf_idx(i)) = eval(ISS0.Bs{Bf_idx(i)});   
+                         endfor
+                        endif
+                        if ismatrix(Kf_idx)
+                         for i=1:length(Kf_idx)
+                             ISS0.K(Kf_idx(i)) = eval(ISS0.Ks{Kf_idx(i)});   
+                         endfor
+                        endif
+                        if ismatrix(Cf_idx)
+                         for i=1:length(Cf_idx)
+                             ISS0.C(Cf_idx(i)) = eval(ISS0.Cs{Cf_idx(i)});   
+                         endfor
+                        endif
+                        if ismatrix(Df_idx)
+                         for i=1:length(Df_idx)
+                             ISS0.D(Df_idx(i)) = eval(ISS0.Ds{Df_idx(i)});   
+                         endfor
+                        endif
+
 
                         StabCheck(t) = -i;
 
@@ -934,6 +1075,7 @@ function [Y, ISS, X, Qs, StabCheck, ISS_Mtrx, X_Mtrx, Qs_Mtrx,Gss_Mtrx] = \
 
                 if ismatrix(Dt_D)  # If zero-length matrix, don't do anything
                     Dt((ny*nv)-numel(Dt_D)+1:(ny*nv)) = Dt_D(:);
+                    keyboard
                 endif
             endif
             
