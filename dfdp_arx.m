@@ -61,32 +61,42 @@ function prt = dfdp_arx (x, f, p)
   endif
 
 
+  ## How many inputs?
+  nits = columns (x) - 1;
+
+
   ## Pull A and B out of P
-  B = p (1:nb);
-  A = p (nb+1:length(p));
+  for i=1:nits
+    B(:,i) = p ( (nb*(i-1))+1:nb*i);
+  endfor
+  A = p (nb*i+1:length(p));
 
 
   ## Pull ITS and OTS out of x
-  its = x (:,1);
-  ots = x (:,2);
+  its = x (:,1:nits);
+  ots = x (:,nits+1);
 
 
   ## Initialize Jacobian matrix
   prt = zeros (length(f), length(p) );
 
   ## Calculate partials
-  for j=1:nb
-
-    ## dy/db
-    prt (:,j) = filter ([1], [1], \
-    			[zeros(j-1,1); its(1:length(its)-j+1)]);
+  for i=1:nits
+    for j=1:nb
+      
+      ## dy/db
+      prt (:,j + ((i-1)*nb) ) = filter ([1], [1], \
+    					[zeros(j-1,1); its(1:length(its)-j+1,i)]);
+    endfor
   endfor
 
   for j=1:na
     ## dy/dA
-    prt (:,j+nb) = -filter ([1], [1], \
+    prt (:,j + nb*i) = -filter ([1], [1], \
     				  [zeros(j,1); ots(1:length(ots)-j)]);
     
   endfor
+
+
 
 endfunction

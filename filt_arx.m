@@ -61,17 +61,6 @@ function y = filt_arx (iots, p)
   nb = leasqr_misc.nb;
   na = leasqr_misc.na;
 
-  ## Make sure that the filter is a vector of scalars
-  if (min(size(p)) > 1 )
-    error (["The coefficients must be in a single vector of scalars\n"]);
-  endif
-
-  ## Make sure that the iots is a two column matrix
-  if (min(size(iots)) > 2 )
-    error (["The input/output time series must be a two-column matrix\n",
-	    "with rows corresponding to different observation times\n"]);
-  endif
-
 
   ## Make sure that the filter and input vectors are
   ## both made of column vectors
@@ -79,26 +68,47 @@ function y = filt_arx (iots, p)
     p = p';
   endif
 
-  ## This is probably safe, since a time series by definition
-  ## must be more than a single observation, and will very likely
-  ## be more than two
+  ## This is probably safe, since we usually expect many more observations
+  ## than observation types
   if (columns(iots) > rows(iots))
-    its=its';
+    iots=iots';
   endif
 
 
+  ## Make sure that the filter is a vector of scalars
+  if (min(size(p)) > 1 )
+    error (["The coefficients must be in a single vector of scalars\n"]);
+  endif
+
+  ## Make sure that the iots is at least a two column matrix
+  if (min(size(iots)) < 2 )
+    error (["The input/output time series must be at least a two-column matrix\n",
+	    "with rows corresponding to different observation times, and only\n",
+	    "the last column corresponding to the output time series.\n"]);
+  endif
+
+
+  ## How many inputs?
+  nits = columns (iots) - 1;
+
   ## Pull A and B out of P
-  B = p (1:nb);
-  A = p (nb+1:length(p));
+  for i=1:nits
+    B(:,i) = p ( (nb*(i-1))+1:nb*i);
+  endfor
+  A = p (nb*i+1:length(p));
 
 
   ## Pull ITS and OTS out of IOTS
-  its = iots (:,1);
-  ots = iots (:,2);
+  its = iots (:,1:nits);
+  ots = iots (:,nits+1);
 
 
+  ## Calculate the MISO model output
   ## for now we won't worry about non-zero initial conditions
-  y = filter ( [B], [1], its) + \
-      filter ( [0;-A], [1], ots);
+  y = zeros (length(ots),1);
+  for i=1:nits
+    y = y + filter ( [B(:,i)], [1], its(:,i) );
+  endfor
+  y = y + filter ( [0;-A], [1], ots);
 
 endfunction
