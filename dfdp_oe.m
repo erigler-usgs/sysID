@@ -87,8 +87,21 @@ function prt = dfdp_oe (x, f, p)
     for j=1:nf
       
       ## dy/dF
-      prt (:,j+nb + (i-1)*(nb+nf)) = -(filter ([1], [1;F(:,i)], \
-    					       [zeros(j,1); f(1:rows(f)-j)]) );
+      ##
+      ## THIS IS WRONG...THE GRADIENT MUST BE CALCULATED BASED ONLY ON
+      ## CURRENT "INPUT"...THE MODEL OUTPUT FROM THE PREVIOUS ITERATION
+      ## IS NOT CORRECT.  I AM LEAVING IT COMMENTED JUST IN CASE I NEED
+      ## TO REMEMBER WHAT I DID THE FIRST TIME. 
+      ##prt (:,j+nb + (i-1)*(nb+nf)) = -(filter ([1], [1;F(:,i)], \
+      ##					 [zeros(j,1); f(1:rows(f)-j)]) );
+
+      ## THIS SHOULD BE CORRECT...
+      prt (:,j+nb + (i-1)*(nb+nf)) = \
+	  -(filter ([1], [1;F(:,i)], \
+		    [zeros(j,1); \
+		     filter (B(:,i), [1;F(:,i)], x(:,i) )(1:rows(x)-j) ] ) );
+							  
+
     endfor
   endfor
 
