@@ -712,10 +712,10 @@ function [Y, ISS, X, Qs, StabCheck, ISS_Mtrx, X_Mtrx, Qs_Mtrx,Gss_Mtrx] = \
         Mt_K = zeros(n,length(Kv_cidx));
         Mt = zeros(n,nv);
         
-        Dt_C=zeros(ny,length(Cv_cidx));
-        Dt_D=zeros(ny,length(Dv_cidx));
-        Dt = zeros(ny,nv);
-        
+        Dt_Ctmp=zeros(ny,length(Cv_cidx));
+        Dt_Dtmp=zeros(ny,length(Dv_cidx));
+        Dt_C = zeros(ny,nv);
+        Dt_D = zeros(ny,nv);
         
         ##
         ## Initialize matrix for predicted output
@@ -771,6 +771,7 @@ function [Y, ISS, X, Qs, StabCheck, ISS_Mtrx, X_Mtrx, Qs_Mtrx,Gss_Mtrx] = \
        ##                                ##
         ##################################
         yvec=zeros(ny,1);
+        yhat=zeros(ny,1);
         err=zeros(ny,1);
         uvec=zeros(nu,1);
         sim_err=0;
@@ -778,22 +779,19 @@ function [Y, ISS, X, Qs, StabCheck, ISS_Mtrx, X_Mtrx, Qs_Mtrx,Gss_Mtrx] = \
         for t=1:rows(yobs)
             
             ##
+            ## Calculate next prediction
+            ##
+            yhat = ISS0.C * X0 + ISS0.D * uvec;
+
+            
+                                    
+            ##
             ## Check if input or output is available for this time step;
             ## replace NaN's with zeros in the data vectors
             ##
             yvec(:)=0;
             obs_avail = find( ~isnan(yobs(t,:)) );
             yvec(obs_avail)=yobs(t,obs_avail);
-            
-            uvec(:)=0;
-            ins_avail = find( ~isnan(uobs(t,:)) );
-            uvec(ins_avail) = uobs(t,ins_avail);
-            
-            ##
-            ## Determine observables and calculate error vector
-            ##
-            yhat = ISS0.C * X0 + ISS0.D * uvec;
-            
 
             ##
             ## If sim_err is true, spatially correlated random noise
@@ -855,36 +853,7 @@ function [Y, ISS, X, Qs, StabCheck, ISS_Mtrx, X_Mtrx, Qs_Mtrx,Gss_Mtrx] = \
             endif
 
 
-            ##
-            ## Determine the derivative Mt (d/dtheta(Ax+Bu+Ke))
-            ## (If this gets really slow, it might be a good idea to
-            ##  extract those parts that can be calulated outside of this
-            ##  loop; this is really only Mt_B and Dt_D)
-            ##
-            if (nv>0)
-                for i=1:length(Av_cidx)
-                    Mt_A(Av_cidx(i),i) = X0(ceil(Av_idx/n)(i));
-                endfor
-                if ismatrix(Mt_A)  # If zero-length matrix, don't do anything
-                    Mt(1:numel(Mt_A)) = Mt_A(:);
-                endif
-
-                for i=1:length(Bv_cidx)
-                    Mt_B(Bv_cidx(i),i) = uvec(ceil(Bv_idx/n)(i));
-                endfor
-                if ismatrix(Mt_B)  # If zero-length matrix, don't do anything
-                    Mt(numel(Mt_A)+1:numel(Mt_A)+numel(Mt_B)) = Mt_B(:);
-                endif
-
-                for i=1:length(Kv_cidx)
-                    Mt_K(Kv_cidx(i),i) = err(ceil(Kv_idx/n)(i));
-                endfor
-                if ismatrix(Mt_K)  # If zero-length matrix, don't do anything
-                    Mt(numel(Mt_A)+numel(Mt_B)+1:numel(Mt_A)+numel(Mt_B)+numel(Mt_K)) = Mt_K(:);
-                endif
-            endif
-
-            
+                      
             ##
             ## Update L gain matrix
             ##
@@ -893,8 +862,9 @@ function [Y, ISS, X, Qs, StabCheck, ISS_Mtrx, X_Mtrx, Qs_Mtrx,Gss_Mtrx] = \
                 L = Qs0.P * Qs0.Psi * inv(S);
             endif
 
+
             ##
-            ## Calculate theta(t) and update ISS0.*
+            ## Calculate new theta(t) and update ISS0.*
             ##
             if (nv>0)
                 theta_old = theta;
@@ -1032,9 +1002,10 @@ function [Y, ISS, X, Qs, StabCheck, ISS_Mtrx, X_Mtrx, Qs_Mtrx,Gss_Mtrx] = \
                 endfor
                 if (i~=1) printf ("\n"); endif
                 fflush (stdout);
-
             endif # (another obs_avail block)
-            
+
+   
+                           
             ##
             ## Update P (I'm not sure if P should be left as-is if no
             ##           observations are available or not)
@@ -1042,51 +1013,92 @@ function [Y, ISS, X, Qs, StabCheck, ISS_Mtrx, X_Mtrx, Qs_Mtrx,Gss_Mtrx] = \
             if (nv>0)
                 Qs0.P = 1/lam * (Qs0.P - L * S * L') + Qv;
             endif
-            
+
+ 
+
+            ##
+            ## Determine the derivative Mt (d/dtheta(Ax+Bu+Ke))
+            ## (If this gets really slow, it might be a good idea to
+            ##  extract those parts that can be calulated outside of this
+            ##  loop; this is really only Mt_B and Dt_D)
+            ##
+            if (nv>0)
+                for i=1:length(Av_cidx)
+                    Mt_A(Av_cidx(i),i) = X0(ceil(Av_idx/n)(i));
+                endfor
+                if ismatrix(Mt_A)  # If zero-length matrix, don't do anything
+                    Mt(1:numel(Mt_A)) = Mt_A(:);
+                endif
+
+                for i=1:length(Bv_cidx)
+                    Mt_B(Bv_cidx(i),i) = uvec(ceil(Bv_idx/n)(i));
+                endfor
+                if ismatrix(Mt_B)  # If zero-length matrix, don't do anything
+                    Mt(numel(Mt_A)+1:numel(Mt_A)+numel(Mt_B)) = Mt_B(:);
+                endif
+
+                for i=1:length(Kv_cidx)
+                    Mt_K(Kv_cidx(i),i) = err(ceil(Kv_idx/n)(i));
+                endfor
+                if ismatrix(Mt_K)  # If zero-length matrix, don't do anything
+                    Mt(numel(Mt_A)+numel(Mt_B)+1:numel(Mt_A)+numel(Mt_B)+numel(Mt_K)) = Mt_K(:);
+                endif
+            endif
+
+                        
+            ##
+            ## Update W 
+            ## 
+            if (nv>0)
+                Qs0.W = (ISS0.A-ISS0.K*ISS0.C) * Qs0.W + Mt - ISS0.K*Dt_C;
+            endif
+
+                        
             ##
             ## Calculate next state X(t+1)
             ##
             X0 = ISS0.A * X0 + ISS0.B * uvec + ISS0.K * err;
             
 
-            ##
-            ## Update W 
-            ## 
-            if (nv>0)
-                Qs0.W = (ISS0.A-ISS0.K*ISS0.C) * Qs0.W + Mt - ISS0.K*Dt;
-            endif
+            
+            uvec(:)=0;
+            ins_avail = find( ~isnan(uobs(t,:)) );
+            uvec(ins_avail) = uobs(t,ins_avail);
+            
 
+  
             ##
-            ## Determine the derivative Dt (d/dtheta(Cx+Du))
-            ## (I don't really understand this, but calculate Dt here instead of
-            ##  *before* the Qs0.W update according to Ljung (1983))
+            ## Determine the derivative matrices Dt_C and Dt_D (d/dtheta(Cx+Du))
             ##
             if (nv>0)
                 for i=1:length(Cv_cidx)
-                    Dt_C(Cv_cidx(i),i) = X0(ceil(Cv_idx/ny)(i));
+                    Dt_Ctmp(Cv_cidx(i),i) = X0(ceil(Cv_idx/ny)(i));
                 endfor
                 if ismatrix(Dt_C)  # If zero-length matrix, don't do anything
-                    Dt((ny*nv)-numel(Dt_D)-numel(Dt_C)+1:(ny*nv)-numel(Dt_D)) = Dt_C(:); 
+                    Dt_C((ny*nv)-numel(Dt_Dtmp)-numel(Dt_Ctmp)+1:(ny*nv)-numel(Dt_Dtmp)) = Dt_Ctmp(:); 
                 endif
 
                 for i=1:length(Dv_cidx)
-                    Dt_D(Dv_cidx(i),i) = uvec(ceil(Dv_idx/ny)(i));
+                    Dt_Dtmp(Dv_cidx(i),i) = uvec(ceil(Dv_idx/ny)(i));
                 endfor
-
                 if ismatrix(Dt_D)  # If zero-length matrix, don't do anything
-                    Dt((ny*nv)-numel(Dt_D)+1:(ny*nv)) = Dt_D(:);
-                    keyboard
+                    Dt_D((ny*nv)-numel(Dt_Dtmp)+1:(ny*nv)) = Dt_Dtmp(:);
                 endif
             endif
-            
+
+
+
+           
             ##
             ## Update Psi
             ##
             if (nv>0)
-                Qs0.Psi = Qs0.W' * ISS0.C' + Dt';
+                Qs0.Psi = Qs0.W' * ISS0.C' + Dt_C' + Dt_D';
             endif            
             
-            
+
+                        
+                                    
             ##
             ## Accumulate requested output matrices
             ##
