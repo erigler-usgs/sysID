@@ -66,9 +66,10 @@ function [theta,lag,PHI,CC] = fir_mimo_corls (its, ots, lagsize)
     maxlagsize = max(abs(lagsize));
     ## if for some reason a vector was passed of identical values, assume that
     ## the user wants one negative and one positive
-    if (min_lag == max_lag)
-      min_lag = -min_lag;
-    endif
+    ## -- This prohibits generating 1st order models --
+    ##if (min_lag == max_lag)
+    ##  min_lag = -min_lag;
+    ##endif
   elseif (is_scalar(lagsize) ) ## do nothing
     min_lag = -lagsize;
     max_lag = lagsize;
