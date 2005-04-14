@@ -61,36 +61,63 @@
 ###
 ###               Each polynomial matrix may have a corresponding "shadow
 ###              matrix", which is only relevant when this function is being
-###              used for system identification.  Each element of the shadow
-###              matrix is either a scalar describing the variance of the
-###              parameter, and will be ultimately placed in a diagonal
-###              parameter process noise covariance matrix that corresponds
-###              to the vector of adjustable parameters that will augment
-###              state vector, OR it can be a NaN, indicating that that 
-###              parameter is NOT adjustable at all. For example if time-
-###              stationary versions of the above matrices needed to
-###              be determined, the shadow matrices would be:
+###              used to identify the system's dynamical model parameters.  
+###              This must be a cell matrix where each value is one of the
+###              following:
 ###
+###              1) a scalar designating the variance of the parameter that
+###                 will be placed in the diagonal of the parameter process
+###                 noise covariance matrix; this allows the corresponding
+###                 coefficient to vary with time as a sort of random walk,
+###                 where a larger variance means larger "steps" in the
+###                 recursive estimation algorithm.  If this value is set to
+###                 0 (zero) the estimation should converge to the time-
+###                 stationary set of model parameters that minimizes the
+###                 prediction errors (a "maximum likelihood" solver).
 ###
-###     ISS0.As = [NaN NaN NaN NaN] ISS0.Bs = [ 0   0 ] ISS0.Ks = [ 0   0   0 ]
+###              2) a string that can be evaluated to explicitly specify how
+###                 the parameter might vary; one may make the parameter a
+###                 function of another parameter (i.e. As{2}='-K(4)'), a function
+###                 of "time" (i.e., Bs{4}='1/t^2'; note that the variable "t"
+###                 is internal to this function, and is reset with each call),
+###                 or even a fixed value (i.e., Cs{1}='1'; although setting
+###                  C(1)=1, and Cs{1}=NaN will do the same thing, as seen in
+###                  the following...).
+###
+###              3) a NaN, indicating that that particular parameter is NOT
+###                 adjustable.  This could also be accomplished using a 
+###                 string that evaluates as a fixed value, but that would
+###                 result in substantially slower execution.
+###
+###              ...for example:
+###
+###     ISS0.As = [NaN '1' NaN NaN] ISS0.Bs = [ 0   0 ] ISS0.Ks = [ 0   0   0 ]
 ###               [ 0   0   0   0 ]           [ 0   0 ]           [ 0   0   0 ]
 ###               [ 0   0   0   0 ]           [ 0   0 ]           [ 0   0   0 ]
 ###               [ 0   0   0   0 ]           [ 0   0 ]           [ 0   0   0 ]
 ###
-###     ISS0.Cs = [NaN NaN NaN NaN] ISS0.Ds = [ 0   0 ]
-###               [NaN NaN NaN NaN]           [ 0   0 ]
-###               [NaN NaN NaN NaN]           [ 0   0 ]
+###     ISS0.Cs = ['1' NaN NaN NaN] ISS0.Ds = [ 0   0 ]
+###               [NaN '1' NaN NaN]           [ 0   0 ]
+###               [NaN NaN '1' NaN]           [ 0   0 ]
 ###
 ###
 ###              *   Eventually, if yobs(t) = NaN (i.e. no available output),
-###                we might have the parameters sort of decay exponentially
-###                to the average time-stationary values.  This constitutes
-###                a kind of Gauss-Markov process, but where the background
-###                state is still determined by a set of dynamical equations,
-###                not some static or quasi-static climatology.
+###                we might have the parameters decay exponentially to the 
+###                initial values passed in the ISS0 parameter matrices A, B,
+###                K, C, and D (this would require explicit storage of their
+###                initial values).  In effect, this would constitute something
+###                similar to a Gauss-Markov process, but rather than decaying
+###                to a simple background state or climatology, the dynamical
+###                equations gradually return back to their time-stationary
+###                parameters if no observations are available to update 
+###                the state or correct the parameters.  This is not implemented
+###                yet because I have never seen such an thing in any of the
+###                literature, and I'm not confident that such an approach would
+###                not violate assumptions that make this RPE algorithm such a
+###                powerful estimation tool.
 ###                  For now, we simply do not update the parameters when there
 ###                are no observations from which to calculate residuals, and
-###                thus determine the appropriate update.  -EJR (10/21/04)
+###                thus determine the appropriate corrections. -EJR (04/13/05)
 ###
 ###         
 ### X0         - Initial state vector of the system.  If this vector is not
@@ -187,12 +214,12 @@
 ###                     remember to be careful whether Gss is a column vector or a row
 ###                     vector, it matters!
 ###
-###              Note3:   The variables Pss, Wss, and Psiss may actually also be
-###                     set, but only have meaning if Qs_Mtrx is requested as an
-###                     output.  If this is the case, each P, W, and Psi
-###                     will be accumulated and returned to the user.  THIS CAN
-###                     VERY EASILY USE UP ALL AVAILABLE MEMORY SO BE CAREFUL!
-###                     (Don't ask why they have the suffix "ss", I just couldn't 
+###              Note3:   The variables Pss, Wss, and Psiss may also be set, but
+###                     only have meaning if Qs_Mtrx is requested as an output.
+###                     If this is the case, each P, W, and Psi will be accumulated
+###                     and returned to the user.  THIS CAN USE UP ALL AVAILABLE MEMORY
+###                     so be careful.
+###                     (Please don't ask why they have the suffix "ss", I could not 
 ###                      think of anything more descriptive, so I used the same thing
 ###                      I did for Gss, even though these variables have nothing
 ###                      whatsoever to do with "step size").
@@ -266,8 +293,8 @@
 ### Qs_Mtrx    - This "column" vector holds a time series of structures containing the
 ###              covariance matrices, and is only accumulated if asked for since it
 ###              can potentially use a tremendous amount of memory.  In fact, these
-###              matrices can get SO big, the structures will contain P, W, and Psi if
-###              and only if the corresponding shadow matrices Pss, Wss, and Psiss
+###              matrices can get SO big, that the structures will contain P, W, and Psi
+###              if and only if the corresponding shadow matrices Pss, Wss, and Psiss
 ###              were included in Qs0.
 ###              
 ###              Note7:    Really, I mean it, be careful with Pss, Wss, and Psiss!  For
@@ -286,7 +313,7 @@
 ###                      must rather loop over each valid entry for the LHS, and do the
 ###                      row/column multiplication manually, likely slowing down things
 ###                      considerably, but saving tremendous amounts of memory.
-###                      Status:  Not yet implemented
+###                      Status:  NOT YET IMPLEMENTED
 ###
 
 function [Y, ISS, X, Qs, StabCheck, ISS_Mtrx, X_Mtrx, Qs_Mtrx,Gss_Mtrx] = \
@@ -295,9 +322,9 @@ function [Y, ISS, X, Qs, StabCheck, ISS_Mtrx, X_Mtrx, Qs_Mtrx,Gss_Mtrx] = \
         warn_divide_by_zero=0;
 
         if (nargin < 2)
-            error("\nNot input enough parameters\n");
+            error("\nNot input enough parameters");
         elseif (nargin > 6)
-            error("\nToo many input parameters\n");
+            error("\nToo many input parameters");
         elseif (nargin == 2 ||
                 (nargin == 6 && isempty(ISS0)) )
                 
@@ -367,7 +394,7 @@ function [Y, ISS, X, Qs, StabCheck, ISS_Mtrx, X_Mtrx, Qs_Mtrx,Gss_Mtrx] = \
         endif
             
         if (~ (isfield(ISS0,'A') & isfield(ISS0,'B') & isfield(ISS0,'K') & isfield(ISS0,'C') & isfield(ISS0,'D') ) )
-            error("\nA, B, K, C, and D matrices must reside in the ISS0 structure\n");
+            error("\nA, B, K, C, and D matrices must reside in the ISS0 structure");
         else
             
             nu = columns(uobs);         # number of different inputs
@@ -379,84 +406,84 @@ function [Y, ISS, X, Qs, StabCheck, ISS_Mtrx, X_Mtrx, Qs_Mtrx,Gss_Mtrx] = \
             if (issquare(ISS0.A)) 
                 n=rows(ISS0.A); 
             else
-                error("\nThe A matrix must be square, with dimension equal to the order of the system being modeled\n");
+                error("\nThe A matrix must be square, with dimension equal to the order of the system being modeled");
             endif
             
             if (rows(ISS0.B) ~= rows(ISS0.A))
-                error("\nThe number of rows in A and B matrices must match\n");
+                error("\nThe number of rows in A and B matrices must match");
             endif
             
             if (columns(ISS0.B) ~= nu)
-                error("\nThe number of columns in B matrix must match the number of inputs\n");
+                error("\nThe number of columns in B matrix must match the number of inputs");
             endif
             
             if (n ~= rows(ISS0.K))
-                error("\nThe number of rows in K matrix must match the order of the square A matrix\n");
+                error("\nThe number of rows in K matrix must match the order of the square A matrix");
             endif
             
             if (ny ~= columns(ISS0.K))
-                error("\nThe number of columns in K matrix must match the number of outputs\n");
+                error("\nThe number of columns in K matrix must match the number of outputs");
             endif
             
             if (n ~= columns(ISS0.C))
-                error("\nThe number of columns in C matrix must match the order of the square A matrix\n");
+                error("\nThe number of columns in C matrix must match the order of the square A matrix");
             endif
             
             if (ny ~= rows(ISS0.C))
-                error("\nThe number of rows in C matrix must match the number of outputs\n");
+                error("\nThe number of rows in C matrix must match the number of outputs");
             endif
             
             if (size(ISS0.D) ~= [ny,nu])
                 error(["\nThe D matrix must have number of rows equal to number of outputs",\
-                       "\nand number of columns equal to number of inputs\n"]);
+                       "\nand number of columns equal to number of inputs"]);
             endif
             
             
             ##
-            ## Check for "shadow matrices" in ISS0.  If they exist make sure they have
-            ## the right dimension; if they don't exist, assume that this function was
-            ## not called to identify optimal parameters, but simply to filter some data,
+            ## Check for "shadow matrices" in ISS0.  If they exist make sure they are cell
+            ## matrices with the right dimension; if they don't exist, assume that this function
+            ## was not called to identify optimal parameters, but simply to filter some data,
             ## and set all shadow elements to NaNs
             ##
-            if (isfield(ISS0,'As') && iscell(ISS0.As))
-                if any(size(ISS0.A) ~= size(ISS0.As) )
-                    error("\nThe A shadow matrix must have same dimension as A matrix\n");
+            if (isfield(ISS0,'As'))
+                if (~iscell(ISS0.As) || any(size(ISS0.A) ~= size(ISS0.As) ) )
+                    error("\nThe As member (shadow matrix) must be a cell matrix and have same dimension as A");
                 endif
             else
                 ISS0.As = cell(size(ISS0.A));
                 ISS0.As(:)=nan;
             endif
             
-            if (isfield(ISS0,'Bs') && iscell(ISS0.Bs))
-                if any(size(ISS0.B) ~= size(ISS0.Bs))
-                    error("\nThe B shadow matrix must have same dimension as B matrix\n");
+            if (isfield(ISS0,'Bs') )
+                if (~iscell(ISS0.Bs) || any(size(ISS0.B) ~= size(ISS0.Bs) ) )
+                    error("\nThe Bs member (shadow matrix) must be a cell matrix and have same dimension as B");
                 endif
             else
                 ISS0.Bs = cell(size(ISS0.B));
                 ISS0.Bs(:)=nan;
             endif
             
-            if (isfield(ISS0,'Ks') && iscell(ISS0.Ks))
-                if any(size(ISS0.K) ~= size(ISS0.Ks))
-                    error("\nThe K shadow matrix must have same dimension as K matrix\n");
+            if (isfield(ISS0,'Ks'))
+                if (~iscell(ISS0.Ks) || any(size(ISS0.K) ~= size(ISS0.Ks) ) )
+                    error("\nThe Ks member (shadow matrix) must be a cell matrix and have same dimension as K");
                 endif
             else
                 ISS0.Ks = cell(size(ISS0.K));
                 ISS0.Ks(:)=nan;
             endif
             
-            if (isfield(ISS0,'Cs') && iscell(ISS0.Cs))
-                if any(size(ISS0.C) ~= size(ISS0.Cs))
-                    error("\nThe C shadow matrix must have same dimension as C matrix\n");
+            if (isfield(ISS0,'Cs'))
+                if (~iscell(ISS0.Cs) || any(size(ISS0.C) ~= size(ISS0.Cs) ) )
+                    error("\nThe Cs member (shadow matrix) must be a cell matrix and have same dimension as C");
                 endif
             else
                 ISS0.Cs = cell(size(ISS0.C));
                 ISS0.Cs(:)=nan;
             endif
             
-            if (isfield(ISS0,'Ds') && iscell(ISS0.Ds))
-                if any(size(ISS0.D) ~= size(ISS0.Ds))
-                    error("\nThe D shadow matrix must have same dimension as D matrix\n");
+            if (isfield(ISS0,'Ds'))
+                if (~iscell(ISS0.Ds) || any(size(ISS0.D) ~= size(ISS0.Ds) ) )
+                    error("\nThe Ds member (shadow matrix) must be a cell matrix and have same dimension as D");
                 endif
             else
                 ISS0.Ds = cell(size(ISS0.D));
@@ -563,7 +590,7 @@ function [Y, ISS, X, Qs, StabCheck, ISS_Mtrx, X_Mtrx, Qs_Mtrx,Gss_Mtrx] = \
             X0 = zeros(n,1);
         endif
         if (size(X0) ~= [n,1])
-            error("\nX0 must be a column vector with length that matches the order of square A matrix\n");
+            error("\nX0 must be a column vector with length that matches the order of square A matrix");
         endif
         
         
@@ -631,14 +658,14 @@ function [Y, ISS, X, Qs, StabCheck, ISS_Mtrx, X_Mtrx, Qs_Mtrx,Gss_Mtrx] = \
             Qs0.W = zeros(n,nv);
         elseif (size(Qs0.W)~=[n,nv])
             error(["\nThe derivative matrix W should have a number of rows equal to the system order",\
-                   "\nand a number of columns equal to the number of adjustable parameters\n"]);
+                   "\nand a number of columns equal to the number of adjustable parameters"]);
         endif
         
         if (~ (isfield(Qs0,'Psi')) )
             Qs0.Psi = zeros(nv,ny);
         elseif (size(Qs0.Psi)~=[nv,ny])
             error(["\nThe derivative matrix Psi should have a number of rows equal to the number of",\
-                   "\nadjustable parameters, and a number of columns equal to the number of outputs\n"]);
+                   "\nadjustable parameters, and a number of columns equal to the number of outputs"]);
         endif
         
         
@@ -650,7 +677,7 @@ function [Y, ISS, X, Qs, StabCheck, ISS_Mtrx, X_Mtrx, Qs_Mtrx,Gss_Mtrx] = \
             # zeros would result in non-adjustable parameters
             Qs0.P = 100 * max(nanstd(yobs).^2) * eye(nv,nv);
         elseif (size(Qs0.P)~=[nv,nv])
-            error("\nThe covariance matrix P must be square, with dimension equal to the number of adjustable parameters\n");
+            error("\nThe covariance matrix P must be square, with dimension equal to the number of adjustable parameters");
         endif
         
 
@@ -667,11 +694,11 @@ function [Y, ISS, X, Qs, StabCheck, ISS_Mtrx, X_Mtrx, Qs_Mtrx,Gss_Mtrx] = \
         ##
         ## Fill up the parameter vector theta
         ##
-        tA=ISS0.A(Av_idx);
-        tB=ISS0.B(Bv_idx);
-        tK=ISS0.K(Kv_idx);
-        tC=ISS0.C(Cv_idx);
-        tD=ISS0.D(Dv_idx);
+        tA(:)=ISS0.A(Av_idx);
+        tB(:)=ISS0.B(Bv_idx);
+        tK(:)=ISS0.K(Kv_idx);
+        tC(:)=ISS0.C(Cv_idx);
+        tD(:)=ISS0.D(Dv_idx);
 
         theta = [tA,tB,tK,tC,tD]';
 
@@ -682,11 +709,11 @@ function [Y, ISS, X, Qs, StabCheck, ISS_Mtrx, X_Mtrx, Qs_Mtrx,Gss_Mtrx] = \
         ## in the ISS0 matrices (extracting values from cell arrays is a little
         ##  strange, thus the brackets and explicit type conversion to double)
         ##
-        tAv=double([ISS0.As{Av_idx}]);
-        tBv=double([ISS0.Bs{Bv_idx}]);
-        tKv=double([ISS0.Ks{Kv_idx}]);
-        tCv=double([ISS0.Cs{Cv_idx}]);
-        tDv=double([ISS0.Ds{Dv_idx}]);
+        tAv(:)=double([ISS0.As{Av_idx}]);
+        tBv(:)=double([ISS0.Bs{Bv_idx}]);
+        tKv(:)=double([ISS0.Ks{Kv_idx}]);
+        tCv(:)=double([ISS0.Cs{Cv_idx}]);
+        tDv(:)=double([ISS0.Ds{Dv_idx}]);
 
         Qv = diag([tAv,tBv,tKv,tCv,tDv]'); # perhaps someday we can modify this to allow
                                            # non-digonal Qv matrices
@@ -727,7 +754,7 @@ function [Y, ISS, X, Qs, StabCheck, ISS_Mtrx, X_Mtrx, Qs_Mtrx,Gss_Mtrx] = \
         ## Initialize other output matrices if they were called for
         ##
         if (nargout > 9)
-            error("\nToo many output arguments\n");
+            error("\nToo many output arguments");
         endif
         
         if (nargout > 4)
