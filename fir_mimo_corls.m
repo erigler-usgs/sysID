@@ -1,20 +1,32 @@
+### Copyright (C) 2005 E. Joshua Rigler
 ###
-### fir_mimo_corls.m
+### This program is free software; you can redistribute it and/or modify
+### it under the terms of the GNU General Public License as published by
+### the Free Software Foundation; either version 2 of the License, or
+### (at your option) any later version.
 ###
-### This routine will produce a coupled Finite Impulse Response (FIR) linear 
-### filter based on given input and output time series.  This filter is the 
-### solution to system of linear equations derived from the auto- and cross-
-### correlation vectors, rather than the actual data-based regression matrix.
-### This should, in theory, result in a "consistent", if not necessarily un-
-### biased estimate of the optimal parameters (that's what was said in 
-### "Nonlinear System Identification", Nelles (2001) about a nearly identical 
-### algorithm designed to determine ARX model parameters...since this model 
-### has no recursion, I think it is also guaranteed to be "unbiased", as long
-### as the time series are time-invariant).
+### This program is distributed in the hope that it will be useful,
+### but WITHOUT ANY WARRANTY; without even the implied warranty of
+### MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+### GNU General Public License for more details.
+###
+### You should have received a copy of the GNU General Public License
+### along with this program; if not, write to the Free Software
+### Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+
 ###
 ### Usage:
 ###
 ### [theta, lags, lhs, rhs] = fir_mimo_corls (its, ots[, lagsize])
+###
+### Produces a multi-input/multi-output Finite Impulse Response (FIR) linear 
+### filter based on given input and output time series.  This filter is the 
+### solution to system of linear equations derived from the auto- and cross-
+### correlation vectors, rather than directly from an observation-based 
+### regression matrix.  This, in theory, provides a "consistent" estimate
+### of the estimated parameters (i.e., given infinite training data, the
+###  solution is guaranteed to converge to an optimal solution), and helps
+### attenuate noise that might otherwise bias parameter estimates.
 ###
 ### INPUTS:
 ###
@@ -34,16 +46,41 @@
 ###
 ### OUTPUTS:
 ###
-### theta     - vector of optimal filter coefficients
+### theta     - MIMO fir filter matrix; rows correspond to time-lags
+###             divided by the number of different inputs; columns 
+###             correspond to the different outputs; (for example,
+###             a 2 input (a,b), 3 output (x,y,z), 3 lag filter 
+###             with lags 0, 1, and 2, the matrix would look like:
+###
+###                [ a(0,x) a(0,y) a(0,z) ]
+###                [ b(0,x) b(0,y) b(0,z) ]
+###                [ a(1,x) a(1,y) a(1,z) ]
+###                [ b(1,x) b(1,y) b(1,z) ]
+###                [ a(2,x) a(2,y) a(2,z) ]
+###                [ b(2,x) b(2,y) b(2,z) ]
+###
+###             This matrix can be used in conjunction with the function 
+###             filt_mimo.m and the appropriate set of imput column vectors
+###             to generate predicted MIMO output.
+###
 ### lags      - vector of corresponding lag values (units are whatever the
-###             sampling interval is)
+###             sampling interval is).  This may also be used in conjunction
+###             witht he filt_mimo.m function.
+###
 ### rhs       - full cross-correlation matrix for output/input time series.
 ###             It is the right hand side of the regression equation.
+###
 ### lhs       - full auto-correlation matrix for the input time series.
 ###             It is the regression matrix, and left hand side of our
 ###             equation.  This, multiplied by theta, should give the
 ###             rhs matrix.  If not, something is very wrong!
 ###
+
+### Revision History:
+###
+### 2005-07-20  First version with GNU/GPL license statement included
+###             for public distribution (and possible modifications).  
+###             No known bugs at this time.
 
 function [theta,lag,PHI,CC] = fir_mimo_corls(its, ots, lagsize)
 
@@ -83,7 +120,7 @@ function [theta,lag,PHI,CC] = fir_mimo_corls(its, ots, lagsize)
   ## Make sure the input and output time series matrices are composed of
   ## column vectors.  This is a bit of a kludge, since it assumes that the
   ## length(theta)<<length(its).
-  if (rows(its)<columns(its))
+  if (rows(its) < columns(its))
     its = its';
   endif
   if (rows(ots) < columns(ots))
@@ -93,7 +130,6 @@ function [theta,lag,PHI,CC] = fir_mimo_corls(its, ots, lagsize)
 
   ## Calculate auto-correlation functions for input series
   autoin = flipud(xcorr (its, max_lag-min_lag));
-  #autoin = xcov (its, max_lag-min_lag);
 
 
   ## Arrange the auto-correlation regression matrix (Left-Hand side)
@@ -121,18 +157,14 @@ function [theta,lag,PHI,CC] = fir_mimo_corls(its, ots, lagsize)
   
   ## Calculate the cross-correlation functions for the output and input
   ## time series.  This is equivalent to the assignment to "autoin" above,
-  ## except that the xcov.m function does not accept a matrix for both
-  ## input and output (X & Y).  Also, according to (Robinson, 1983)...???
+  ## except that the xcorr.m function does not accept a matrix for both
+  ## input and output (X & Y).
   k = 1;
-
-  ## YOU REALLY NEED TO FIGURE OUT WHY YOU DID THIS HERE, AND MAKE SURE ITS
-  ## CORRECT!!!!!!!!   OK, I've looked at this several times, and am about 
-  ## 90% sure it's all correct.  Let's trust it for now (-EJR 9/2/02)
 
   for i=1:columns (its)
     for j=1:columns (ots)
-      ## flipud is to fix problem that occurs since change in xcorr.m in
-      ## octaveforge that was made in 2004 (EJR, 2/28/2005)
+      ## "flipud" is to fix problem that occurs since change in xcorr.m
+      ## in octaveforge that was made in 2004 (EJR, 2/28/2005)
       cross_inout(:,k) = flipud(xcorr(its(:,i), ots(:,j), maxlagsize));
       #cross_inout (:,k) = xcov (its (:,i), ots(:,j), maxlagsize);
       k++;
@@ -155,9 +187,6 @@ function [theta,lag,PHI,CC] = fir_mimo_corls(its, ots, lagsize)
     ## top of the third and down, etc.).  This is why we take the transpose here.
     CC = [CC ; reshape(cross_inout (i,:), dim_ccs(2), dim_ccs(1) )'];
 
-    ## (That was a heck of a lot easier than setting up the 
-    ##  auto-correlation matrix!!!)
-
   endfor
 
 
@@ -173,8 +202,8 @@ function [theta,lag,PHI,CC] = fir_mimo_corls(its, ots, lagsize)
   S = diag (S);
 
   ## Solve for the filter paramters (I don't remember exactly where I found
-  ## this equation for solving this using the output from SVD, but it is
-  ## essentially a form of reverse substitution)
+  ## this equation for solving this using the output from the SVD function,
+  ## but it is essentially a form of reverse substitution)
   theta = V*(S \ (U' * CC) );
   lag = [min_lag:max_lag];
 
