@@ -1,20 +1,33 @@
-### fir_mimo_kalman.m
+### Copyright (C) 2005 E. Joshua Rigler
 ###
-### This routine calculates an "adaptive" FIR filter given input and 
-### output time series, using a sequential (Kalman) filter algorithm.
-### The name of this function implies that only Finite Impulse Response
-### functions are returned, but adaptive AR models can be returned as well
-### if one passes appropriately lagged input and output time series. This 
-### routine uses the algorithm described in Johansson (1993, pp. 120;269), 
-### which is very similar to the algorithm described in Nelles (2001, 
-### pp. 66) but we designate an observation error covariance matrix, 
-### rather than observation weights.
+### This program is free software; you can redistribute it and/or modify
+### it under the terms of the GNU General Public License as published by
+### the Free Software Foundation; either version 2 of the License, or
+### (at your option) any later version.
 ###
+### This program is distributed in the hope that it will be useful,
+### but WITHOUT ANY WARRANTY; without even the implied warranty of
+### MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+### GNU General Public License for more details.
+###
+### You should have received a copy of the GNU General Public License
+### along with this program; if not, write to the Free Software
+### Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+
 ### 
 ### Usage:
 ###
 ### [theta, Pbar, lags, errs, theta_mtx, Pbar_mtx] = fir_mimo_kalman \
 ###                 (i_ts, o_ts, lagsize [, theta_0, Pbar_0, R1, R2]);
+###
+###
+### Calculates an "adaptive" multi-input/multi-output FIR filter given 
+### input and output time series, using a form of Kalman filter algorithm.
+### The routine uses an algorithm described in Johansson (System Modeling
+### and Identification, 1993; pp. 120;269), which is very similar to the 
+### algorithm described in Nelles (Nonlinear System Identifications, 2001;
+### pp. 66) but we designate an observation error covariance matrix rather 
+### than observation weights.
 ###
 ### INPUTS:
 ###
@@ -117,7 +130,7 @@
 ###                     | BN_N |
 ###                     |  :   |
 ###
-###             (default = 0)
+###             (default = zeros(#lags*#inputs,#outputs))
 ###
 ### Pbar_0    - State error covariance.  Allows the user to provide the initial 
 ###             value for Pbar, or the inverse of the estimated Hessian matrix.  
@@ -203,8 +216,16 @@
 ###             octave>
 ###
 
+### Revision History:
+###
+### 2005-07-20  First version with GNU/GPL license statement included
+###             for public distribution (and possible modifications).  
+###             - the "reshaped" storage matrices should be modified
+###               in order to take advantage of the fact that Octave
+###               now has good N-D matrix support.  Other than that,
+###               there are no known bugs at this time.
 
-function [theta, Pbar, lags, errs, theta_mtx, Pbar_mtx] = fir_mimo_kalman \
+function [theta, Pbar, lags, errs, theta_mtx, Pbar_mtx] = fir_mimo_kalman\
       (i_ts, o_ts, lagsize, theta_0, Pbar_0, R1, R2)
 
   ## We need to have at least three input parameters
@@ -250,12 +271,12 @@ function [theta, Pbar, lags, errs, theta_mtx, Pbar_mtx] = fir_mimo_kalman \
   ## simple indexes (i.e. sequential, increasing integers), so exit
   ## if lagsize is longer than 2 elements (i.e. don't trust the user
   ## to create his/her own lag vector properly).
-  if (length (lagsize) > 2)
+  if (length(lagsize) > 2)
     error (["\nLag vector must be a scalar, or a 2-element vector\n", \
 	    "that indicates the minimum and maximum lag indices.\n"]);
   endif
 
-  if (length (lagsize) == 1)
+  if (length(lagsize) == 1)
     ## Assume a negative number is a mistake, and correct it
     lags = [-abs(lagsize):abs(lagsize)]';
   else
@@ -270,8 +291,8 @@ function [theta, Pbar, lags, errs, theta_mtx, Pbar_mtx] = fir_mimo_kalman \
   ## Make certain that the input and output time series are at least
   ## of the proper length, even if we can't guarantee that they are
   ## properly lagged.
-  if ((rows (i_ts) - rows (o_ts)) != length(lags)-1 ||
-      (length (lags) >= rows (i_ts)) )
+  if ((rows(i_ts) - rows(o_ts)) != length(lags)-1 ||
+      (length(lags) >= rows(i_ts)) )
     error (["\nInput and Output time series don\'t match,\n ", \
 	    "or they are not long enough to determine a \n", \
 	    "filter recursively.\n"]);
@@ -279,29 +300,29 @@ function [theta, Pbar, lags, errs, theta_mtx, Pbar_mtx] = fir_mimo_kalman \
 
 
   ## A bunch of potentially useful static variables
-  llags   = rows (lags);          ## number of lags
-  ni_ts   = columns (i_ts);       ## number of different inputs
-  no_ts   = columns (o_ts);       ## number of different outputs
-  lo_ts   = rows (o_ts);          ## number of output data points
-  li_ts   = rows (i_ts);          ## number of input data points
+  llags   = rows(lags);          ## number of lags
+  ni_ts   = columns(i_ts);       ## number of different inputs
+  no_ts   = columns(o_ts);       ## number of different outputs
+  lo_ts   = rows(o_ts);          ## number of output data points
+  li_ts   = rows(i_ts);          ## number of input data points
 
 
   ## Vectors and/or matrices should be initialized if possible
-  yhat = zeros (no_ts,1);
-  PHI = zeros (llags*ni_ts,1);
+  yhat = zeros(no_ts,1);
+  PHI = zeros(llags*ni_ts,1);
 
 
   ## These are matrices designed to store the error, state, and co-
   ## variance matrix at each time step.  Only initialize them if the
   ## user wants them returned because they suck up a LOT OF MEMORY!
   if (nargout > 3)
-    errs = zeros (lo_ts,no_ts);
+    errs = zeros(lo_ts,no_ts);
   endif
   if (nargout > 4)
-    theta_mtx = zeros (lo_ts,llags*ni_ts*no_ts );
+    theta_mtx = zeros(lo_ts,llags*ni_ts*no_ts );
   endif
   if (nargout > 5)
-    Pbar_mtx = zeros (lo_ts, (llags*ni_ts*no_ts)^2);
+    Pbar_mtx = zeros(lo_ts, (llags*ni_ts*no_ts)^2);
   endif
 
 
@@ -309,17 +330,17 @@ function [theta, Pbar, lags, errs, theta_mtx, Pbar_mtx] = fir_mimo_kalman \
   ## 2) convert scalars to properly sized matrix of the same value; and
   ## 3) copy the value to the first element of theta.
   if (is_scalar (theta_0))
-    theta = theta_0 * ones (columns(i_ts)*rows(lags), no_ts);
-  elseif (is_vector (theta_0))
-    if (length (theta_0) != (ni_ts*llags*no_ts))
+    theta = theta_0 * ones(columns(i_ts)*rows(lags), no_ts);
+  elseif (is_vector(theta_0))
+    if (length(theta_0) != (ni_ts*llags*no_ts))
       error (["\nFilter's initial value has wrong dimensions!\n"]);
     endif
     ## This is horrible, because we will simply reshape it again later,
     ## but for now parameterize theta according to form #1 in the Help section.
-    theta = reshape (theta_0, [no_ts, ni_ts*llags])';
-  elseif (is_matrix (theta_0))
-    if (rows (theta_0) / ni_ts != llags || \
-	columns (theta_0) != no_ts )
+    theta = reshape(theta_0, [no_ts, ni_ts*llags])';
+  elseif (is_matrix(theta_0))
+    if (rows(theta_0) / ni_ts != llags || \
+	columns(theta_0) != no_ts )
       error (["\nFilter's initial value has wrong dimensions!\n"]);
     endif
     theta = theta_0;
@@ -330,18 +351,18 @@ function [theta, Pbar, lags, errs, theta_mtx, Pbar_mtx] = fir_mimo_kalman \
 
 
   ## Initialize Pbar
-  if (is_scalar (Pbar_0))
+  if (is_scalar(Pbar_0))
     Pbar = [eye(ni_ts*llags*no_ts) .* Pbar_0];
-  elseif (is_vector (Pbar_0))
-    if (length (Pbar_0) == (ni_ts*llags*no_ts))
-      Pbar = diag (Pbar_0);
-    elseif (length (Pbar_0) == (ni_ts*llags*no_ts)^2)
-      Pbar = reshape (Pbar_0, (ni_ts*llags*no_ts), (ni_ts*llags*no_ts))';
+  elseif (is_vector(Pbar_0))
+    if (length(Pbar_0) == (ni_ts*llags*no_ts))
+      Pbar = diag(Pbar_0);
+    elseif (length(Pbar_0) == (ni_ts*llags*no_ts)^2)
+      Pbar = reshape(Pbar_0, (ni_ts*llags*no_ts), (ni_ts*llags*no_ts))';
     else
       error(["\nCovariance's initial value has wrong dimension!\n"]);
     endif
-  elseif (is_matrix (Pbar_0))
-    if (size (Pbar_0) != size (eye(ni_ts*llags*no_ts)) )
+  elseif (is_matrix(Pbar_0))
+    if (size(Pbar_0) != size(eye(ni_ts*llags*no_ts)) )
       error (["\nWrong size Covariance matrix!\n"]);
     endif
     Pbar = Pbar_0;
@@ -353,12 +374,12 @@ function [theta, Pbar, lags, errs, theta_mtx, Pbar_mtx] = fir_mimo_kalman \
 
   ## Make sure the covariance matrix R1 is set up properly.
   tv_R1 = 0;
-  if (is_scalar (R1))
-    R1 = eye (llags*ni_ts*no_ts) * R1;
-  elseif (is_vector (R1))
+  if (is_scalar(R1))
+    R1 = eye(llags*ni_ts*no_ts) * R1;
+  elseif (is_vector(R1))
     if (length(R1) == (llags*ni_ts*no_ts))
       ## This pertinent for constant variances, but potentially multiple outputs
-      R1 = diag (R1);
+      R1 = diag(R1);
     elseif (size(R1) == [lo_ts, llags*ni_ts*no_ts])
       ## This is pertinent only if the desired state is a single scalar value
       ## with a time-dependent covariance...an extremely rare situation.
@@ -370,13 +391,13 @@ function [theta, Pbar, lags, errs, theta_mtx, Pbar_mtx] = fir_mimo_kalman \
     endif
     
   elseif (is_matrix (R1))
-    if (size (R1) == [lo_ts, (llags*ni_ts*no_ts)])
+    if (size(R1) == [lo_ts, (llags*ni_ts*no_ts)])
       ## this is pertinent if the diagonal process noise covariance is time-
       ## dependent..
       ## Change nothing in R2, but set a flag so that the algorithm knows how
       ## to handle it later on.
       tv_R1 = 1;
-    elseif (size (R1) == [llags*ni_ts*no_ts,llags*ni_ts*no_ts])
+    elseif (size(R1) == [llags*ni_ts*no_ts,llags*ni_ts*no_ts])
       ## do nothing, R1 is OK as is
     else
       error (["\n\"R1\" is not an appropriate dimension, read the help file.\n"]);
@@ -390,13 +411,13 @@ function [theta, Pbar, lags, errs, theta_mtx, Pbar_mtx] = fir_mimo_kalman \
 
   ## Make sure the covariance matrix R2 is set up properly.
   tv_R2 = 0;
-  if (is_scalar (R2))
-    R2 = eye (no_ts) * R2;
-  elseif (is_vector (R2))
+  if (is_scalar(R2))
+    R2 = eye(no_ts) * R2;
+  elseif (is_vector(R2))
     if (length(R2) == no_ts)
       ## This pertinent for multiple outputs, with constant weighting
-      R2 = diag (R2);
-    elseif (size(R2) == size (o_ts))
+      R2 = diag(R2);
+    elseif (size(R2) == size(o_ts))
       ## This is pertinent for single outputs, with time-varying weighting.
       ## Change nothing in R2, but set a flag so that the algorithm knows
       ## how to handle it later on.
@@ -405,13 +426,13 @@ function [theta, Pbar, lags, errs, theta_mtx, Pbar_mtx] = fir_mimo_kalman \
       error (["\"R2\" is not an appropriate dimension, read the help file.\n"]);
     endif
 
-  elseif (is_matrix (R2)) 
-    if (size (R2) == size (o_ts))
+  elseif (is_matrix(R2)) 
+    if (size(R2) == size(o_ts))
       ## this is pertinent for multiple outputs, with time-varying weighting.
       ## Change nothing in R2, but set a flag so that the algorithm knows how
       ## to handle it later on.
       tv_R2 = 1;
-    elseif (size (R2) == size (eye(no_ts)))
+    elseif (size(R2) == size(eye(no_ts)))
       ## do nothing, R2 is OK as is
     else
       error (["\"R2\" is not an appropriate dimension, read the help file.\n"]);
@@ -438,23 +459,23 @@ function [theta, Pbar, lags, errs, theta_mtx, Pbar_mtx] = fir_mimo_kalman \
       ##printf ("\r i=%d  j=%d",i,j);
       ##fflush (stdout);
       
-      jj = ceil (j/ni_ts);
-      PHI (j:j+ni_ts-1) = i_ts (abs(jj - (llags + 1) ) + (i-1), :)';
+      jj = ceil(j/ni_ts);
+      PHI(j:j+ni_ts-1) = i_ts(abs(jj - (llags + 1) ) + (i-1), :)';
 
     endfor
 
 
     ## This converts PHI into a form compatible with the parameterization
     ## of theta described by form #2 in the Help section.
-    PHI_tmp = kron (PHI,eye(no_ts));
+    PHI_tmp = kron(PHI,eye(no_ts));
 
     yhat = PHI_tmp' * theta_tmp; 
-    err = o_ts (i,:)' - yhat;
+    err = o_ts(i,:)' - yhat;
 
 
     ## Check whether R1 is time-varying or not.
     if (tv_R1 == 1)
-      R1_tmp = diag (R1(i,:));
+      R1_tmp = diag(R1(i,:));
     else
       R1_tmp = R1;
     endif
@@ -462,33 +483,34 @@ function [theta, Pbar, lags, errs, theta_mtx, Pbar_mtx] = fir_mimo_kalman \
 
     ## Check whether R2 is time-varying or not.
     if (tv_R2 == 1)
-      R2_tmp = diag (R2(i,:));
+      R2_tmp = diag(R2(i,:));
     else
       R2_tmp = R2;
     endif
 
 
-    ## This is mostly to suppress warnings about singular matrices,
-    ## but maybe someday I'll actually check the "rcond".
-    [denom,rcond] = inverse (PHI_tmp' * Pbar * PHI_tmp + R2_tmp );
+    ## Return "rcond" to suppress warnings about singular matrices;
+    ## maybe someday I'll actually check the "rcond".
+    [denom,rcond] = inverse(PHI_tmp' * Pbar * PHI_tmp + R2_tmp );
 
 
     gamma = Pbar * PHI_tmp * denom;
     Pbar = Pbar + R1_tmp - gamma * PHI_tmp' * Pbar;
     theta_tmp = theta_tmp + gamma * err;
-   
+
+    #keyboard('Check Kalman Gain (gamma):> ')
 
     ## Store errs, state, and covariance matrices for each time step.
     ## Only store these if the user wants them returned, otherwise they
     ## suck up a WHOLE LOT OF MEMORY (especially the covariances)!
     if (nargout > 3)
-      errs (i,:) = err';
+      errs(i,:) = err';
     endif
     if (nargout > 4)
       theta_mtx(i,:) = theta_tmp';
     endif
     if (nargout > 5)
-      Pbar_mtx(i,:) = reshape (Pbar', 1, rows (Pbar)*columns(Pbar));
+      Pbar_mtx(i,:) = reshape(Pbar', 1, rows(Pbar)*columns(Pbar));
     endif
 
 
@@ -498,20 +520,25 @@ function [theta, Pbar, lags, errs, theta_mtx, Pbar_mtx] = fir_mimo_kalman \
 
     
     if (nargout == 0)
+
+      if(floor(i/200) == (i/200))
+	keyboard ('Check P :>')
+      endif
       
       #if (i == 1)
-	multiplot (ni_ts, no_ts)
+#	multiplot(ni_ts, no_ts)
       #endif
 
-      for k=1:no_ts
-	for l=1:ni_ts  
-	  #clearplot;
-	  grid ("on");
-	  mplot (lags, theta_tmp ( k + (l-1)*no_ts  :ni_ts*no_ts:length(theta_tmp)),';;-' );
-	endfor
-      endfor
+#      for k=1:no_ts
+#	for l=1:ni_ts  
+#	  #clearplot;
+#	  grid ("on");
+#	  mplot(lags, theta_tmp( k + (l-1)*no_ts  :ni_ts*no_ts:length(theta_tmp)),';;-' );
+#	  replot
+#	endfor
+#      endfor
 
-      pause (.1);
+#      pause;
       
     endif
 
@@ -519,10 +546,10 @@ function [theta, Pbar, lags, errs, theta_mtx, Pbar_mtx] = fir_mimo_kalman \
 
 
   ## reshape the last state vector into the proper form
-  theta = reshape (theta_tmp, size (theta'))';
+  theta = reshape(theta_tmp, size (theta'))';
 
 
   printf("\n");
-  fflush (stdout);
+  fflush(stdout);
 
 endfunction
