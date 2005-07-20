@@ -1,11 +1,33 @@
+### Copyright (C) 2005 E. Joshua Rigler
 ###
-### rpe_iss.m
+### This program is free software; you can redistribute it and/or modify
+### it under the terms of the GNU General Public License as published by
+### the Free Software Foundation; either version 2 of the License, or
+### (at your option) any later version.
 ###
-### This function applies an recursive prediction error identification
-### algorithm to the innovations form state space model (ISS, see Ljung
-### and Soderstram, 1983, Chapter 3, Eqs 3.145) in order to estimate both 
-### the optimal state as well as the linear parameters that comprise
-### properly formed polynomial matrices that can be used as follows:
+### This program is distributed in the hope that it will be useful,
+### but WITHOUT ANY WARRANTY; without even the implied warranty of
+### MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+### GNU General Public License for more details.
+###
+### You should have received a copy of the GNU General Public License
+### along with this program; if not, write to the Free Software
+### Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+
+###
+### Usage:
+###
+### {[Y, ISS, X, Qs, Retries, ISS_Mtrx, X_Mtrx, Qs_Mtrx]} = \
+###                      rpe_iss (uobs, yobs {, ISS0, X0, Qs0, maxRetries} )
+###
+### ...where "{}" indicates optional parameters...
+###
+###
+### Applies an recursive prediction error identification algorithm to the 
+### innovations form state space model (ISS, see Ljung and Soderstram, 
+### Theory and Practice of Recursive Identification, 1983; Chapter 3, Eqs 3.145) 
+### to estimate both the optimal state as well as the linear parameters that 
+### comprise properly formed polynomial matrices that can be used as follows:
 ### 
 ###
 ###   x(t+1) = A*x(t) + B*u(t) + K*err(t)
@@ -17,13 +39,6 @@
 ###   _
 ###   y(t+1) = C*x(t+1) + D*u(t+1)
 ###
-###
-### Usage:
-###
-### {[Y, ISS, X, Qs, Retries, ISS_Mtrx, X_Mtrx, Qs_Mtrx]} = \
-###                      rpe_iss (uobs, yobs {, ISS0, X0, Qs0, maxRetries} )
-###
-### ...where "{}" indicates optional parameters...
 ###
 ### INPUTS:
 ###
@@ -315,6 +330,12 @@
 ###                      considerably, but saving tremendous amounts of memory.
 ###                      Status:  NOT YET IMPLEMENTED
 ###
+
+### Revision History:
+###
+### 2005-07-20  First version with GNU/GPL license statement included
+###             for public distribution (and possible modifications).  
+###             There are no known bugs at this time.
 
 function [Y, ISS, X, Qs, StabCheck, ISS_Mtrx, X_Mtrx, Qs_Mtrx,Gss_Mtrx] = \
         rpe_iss (uobs, yobs, ISS0, X0, Qs0, maxStabCheck)
