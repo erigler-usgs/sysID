@@ -81,6 +81,8 @@
 ### 2005-07-20  First version with GNU/GPL license statement included
 ###             for public distribution (and possible modifications).  
 ###             No known bugs at this time.
+###
+### $Log$
 
 function [theta,lag,PHI,CC] = fir_mimo_corls(its, ots, lagsize)
 
