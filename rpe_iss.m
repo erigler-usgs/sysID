@@ -336,6 +336,8 @@
 ### 2005-07-20  First version with GNU/GPL license statement included
 ###             for public distribution (and possible modifications).  
 ###             There are no known bugs at this time.
+###
+### $Log$
 
 function [Y, ISS, X, Qs, StabCheck, ISS_Mtrx, X_Mtrx, Qs_Mtrx,Gss_Mtrx] = \
         rpe_iss (uobs, yobs, ISS0, X0, Qs0, maxStabCheck)

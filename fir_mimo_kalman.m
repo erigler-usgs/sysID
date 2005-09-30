@@ -224,6 +224,8 @@
 ###               in order to take advantage of the fact that Octave
 ###               now has good N-D matrix support.  Other than that,
 ###               there are no known bugs at this time.
+###
+### $Log$
 
 function [theta, Pbar, lags, errs, theta_mtx, Pbar_mtx] = fir_mimo_kalman\
       (i_ts, o_ts, lagsize, theta_0, Pbar_0, R1, R2)
