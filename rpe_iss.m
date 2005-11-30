@@ -337,7 +337,10 @@
 ###             for public distribution (and possible modifications).  
 ###             There are no known bugs at this time.
 ###
-### $Log$
+### $Log: rpe_iss.m,v $
+### Revision 1.9  2005/09/30 17:13:07  jrigler
+### Utilizing RCS/CVS Log string replacement for tracking revisions now
+###
 
 function [Y, ISS, X, Qs, StabCheck, ISS_Mtrx, X_Mtrx, Qs_Mtrx,Gss_Mtrx] = \
         rpe_iss (uobs, yobs, ISS0, X0, Qs0, maxStabCheck)
@@ -361,16 +364,23 @@ function [Y, ISS, X, Qs, StabCheck, ISS_Mtrx, X_Mtrx, Qs_Mtrx,Gss_Mtrx] = \
             
             ISS0.A = zeros(n,n);
             #for i=1:n for j=1:n if j==i+1 ISS0.A(i,j)=1; endif; endfor; endfor;
-            ISS0.As = zeros(n,n);       # no process noise for A
+            ISS0.As = cell(size(ISS0.A));
+            ISS0.As(:) = 0;       # no process noise for A
             #for i=1:n for j=1:n if i~=n ISS0.As(i,j)=NaN; endif; endfor; endfor;
             ISS0.B = zeros(n,nu);
-            ISS0.Bs = zeros(n,nu);      # no process noise for B
+            ISS0.Bs = cell(size(ISS0.B));
+            ISS0.Bs(:) = 0;       # no process noise for B
             ISS0.K = zeros(n,ny);
-            ISS0.Ks = zeros(n,ny);      # no process noise for K
+            ISS0.Ks = cell(size(ISS0.K));
+            ISS0.Ks(:) = 0;       # no process noise for K
             ISS0.C = eye(ny,n);
-            ISS0.Cs = nan*eye(ny,n);    # fix parameters for C
+            ISS0.Cs = cell(size(ISS0.C));
+            ISS0.Cs(:) = NaN;       # no process noise for C
             ISS0.D = zeros(ny,nu);
-            ISS0.Ds = nan*zeros(ny,nu); # fix parameters for D
+            ISS0.Ds = cell(size(ISS0.D));
+            ISS0.Ds(:) = NaN;       # no process noise for D
+            
+            maxStabCheck=10;
             
         elseif (nargin == 3 && isscalar(ISS0) ||
                 (nargin == 6 && isscalar(ISS0)) )
@@ -642,7 +652,16 @@ function [Y, ISS, X, Qs, StabCheck, ISS_Mtrx, X_Mtrx, Qs_Mtrx,Gss_Mtrx] = \
         if (~ (isfield(Qs0,'Gss')) )
             Qs0.Gss = 0;
         endif
-        if (rows(Qs0.Gss)==1 && columns(Qs0.Gss)==1)
+        if (isstr(Qs0.Gss))
+            if (rows(Qs0.Gss)==ny)
+                Gss_str = [];
+                Gss_vec = [];
+            elseif (rows(Qs0.Gss)==1)
+                Gss_str = [];
+            else
+                error('Step-size string not valid');
+            endif
+        elseif (rows(Qs0.Gss)==1 && columns(Qs0.Gss)==1)
             Gss  = Qs0.Gss;
             lam  = 1-Qs0.Gss;
             lam0 = 1;
@@ -657,15 +676,6 @@ function [Y, ISS, X, Qs, StabCheck, ISS_Mtrx, X_Mtrx, Qs_Mtrx,Gss_Mtrx] = \
             lam  = 1-Qs0.Gss(1);
             lam0 = Qs0.Gss(2);
             lamt = 1-Qs0.Gss(3);
-        elseif (isstr(QS0.Gss))
-            if (rows(Qs0.Gss)==ny)
-                Gss_str = [];
-                Gss_vec = [];
-            elseif (rows(Qs0.Gss)==1)
-                Gss_str = [];
-            else
-                error('Step-size string not valid');
-            endif
         elseif (rows(Qs0.Gss)==ny && columns(Qs0.Gss)==1)
             ## set flag for vector of time-dependent Gss's
             Gss_vec = [];
@@ -828,6 +838,10 @@ function [Y, ISS, X, Qs, StabCheck, ISS_Mtrx, X_Mtrx, Qs_Mtrx,Gss_Mtrx] = \
         #keyboard ('Before Loop > ');
         for t=1:rows(yobs)
             
+            #if t==1000
+            #  keyboard
+            #endif
+            
             ##
             ## Calculate next prediction
             ##
@@ -972,9 +986,11 @@ function [Y, ISS, X, Qs, StabCheck, ISS_Mtrx, X_Mtrx, Qs_Mtrx,Gss_Mtrx] = \
                 endif
 
 
-                printf ("\r t = %d; Gss = %f",t,Gss);
+                printf("\r t = %d; Gss = %f",t,Gss);
                 fflush (stdout);
                 for i=1:maxStabCheck
+
+
                     ## Don't even let this thing get close to unstable
                     if (~ is_stable([ISS0.A-ISS0.K*ISS0.C], 1e-6, 1))
 
@@ -1054,8 +1070,11 @@ function [Y, ISS, X, Qs, StabCheck, ISS_Mtrx, X_Mtrx, Qs_Mtrx,Gss_Mtrx] = \
                 fflush (stdout);
             endif # (another obs_avail block)
 
+            ## Something screwy happens between these two 'test'
+            ## displays when the parameter gain matrix (L) is
+            ## calculated from a nearly singular S matrix above.
+            #disp('test1'); fflush(stdout);
    
-                           
             ##
             ## Update P (I'm not sure if P should be left as-is if no
             ##           observations are available or not)
@@ -1064,7 +1083,8 @@ function [Y, ISS, X, Qs, StabCheck, ISS_Mtrx, X_Mtrx, Qs_Mtrx,Gss_Mtrx] = \
                 Qs0.P = 1/lam * (Qs0.P - L * S * L') + Qv;
             endif
 
- 
+            #disp('test2'); fflush(stdout);
+
 
             ##
             ## Determine the derivative Mt (d/dtheta(Ax+Bu+Ke))
@@ -1095,7 +1115,6 @@ function [Y, ISS, X, Qs, StabCheck, ISS_Mtrx, X_Mtrx, Qs_Mtrx,Gss_Mtrx] = \
                 endif
             endif
 
-                        
             ##
             ## Update W 
             ## 
