@@ -63,6 +63,12 @@
 ###              observable form necessary to allow conversion to traditional
 ###              multi-parameter I/O filters (thus the zeros and ones):
 ###
+###           *** The indices noted below are not correct; the matrices are ***
+###           *** filled in row-major order, so numbers should increase     ***
+###           *** going down each column, then shifting one column to the   ***
+###           *** right; I'm not sure why this is messed up in the docs,    ***
+###           *** but I don't want to change it until I have more time to   ***
+###           *** figure out what happened.                                  ***
 ###
 ###     ISS0.A = [ 0   1   0   0 ] ISS0.B = [b01 b02] ISS0.K = [k01 k02 k03]
 ###              [a01 a02 a03 a04]          [b03 b04]          [k04 k05 k06]
@@ -300,6 +306,21 @@
 ###              for since it can potentially use a tremendous amount of memory.
 ###              It's last element should correspond to the single structure ISS.
 ###
+###              Note:  In Octave, if you type something like
+###
+###                >> A_mtrx = Iss_Mtrx(:).A;
+###
+###              you will get a cs-list data type returned, which is not easy to
+###              manipulate.  Instead, you should extract the matrices as 'vector'
+###              of matrices, or cell arrays by using the following syntax:
+###
+###                >> [A_mtrx] = Iss_Mtrx(:).A; #...or...
+###                >> {A_cell} = Iss_Mtrx(:).A
+###
+###              The latter form is actually much faster, apparently since it has no need
+###              to convert a cell to a matrix.  This applies to all arrays of structures 
+###              used to pass back the time series of various internal parameters.
+###
 ### X_Mtrx     - This "column" vector holds a time series of structures of state vectors.
 ###              It is probably not necessary to represent it this way (structures with
 ###              single state vectors as elements) but is done so for consistency with 
@@ -315,7 +336,7 @@
 ###              Note7:    Really, I mean it, be careful with Pss, Wss, and Psiss!  For
 ###                      the sample 4th order, 2 input, 3 output system described above,
 ###                      each time step will result in an ISS_Mtrx element with
-###                           (4x4)+(4x2)+(4x3)+(3x4)+(3x2) = 42 elements.  
+###                           (4x4)+(4x2)+(4x3)+(3x4)+(3x2) = 54 elements.  
 ###                      Each time step would result in a Qs_mtrx element with 
 ###                           (3x3)+(4x38)+(38x3)+(38x38) = 1719 elements!!!
 ###                      (and remember, we weren't estimating every element of the
@@ -338,6 +359,9 @@
 ###             There are no known bugs at this time.
 ###
 ### $Log: rpe_iss.m,v $
+### Revision 1.10  2005/11/30 23:35:13  jrigler
+### Minor bug fixes; checking in before making a few major structural mods
+###
 ### Revision 1.9  2005/09/30 17:13:07  jrigler
 ### Utilizing RCS/CVS Log string replacement for tracking revisions now
 ###
@@ -436,6 +460,7 @@ function [Y, ISS, X, Qs, StabCheck, ISS_Mtrx, X_Mtrx, Qs_Mtrx,Gss_Mtrx] = \
             ##
             ## Check the dimensions of ISS0.*
             ##
+            
             if (issquare(ISS0.A)) 
                 n=rows(ISS0.A); 
             else
@@ -830,10 +855,17 @@ function [Y, ISS, X, Qs, StabCheck, ISS_Mtrx, X_Mtrx, Qs_Mtrx,Gss_Mtrx] = \
       ### Start main loop                ###
        ##                                ##
         ##################################
+        
+        ## initialize some variables
         yvec=zeros(ny,1);
         yhat=zeros(ny,1);
         err=zeros(ny,1);
+        ## actually, initialize and populate first rows of these variables
         uvec=zeros(nu,1);
+          ins_avail = find( ~isnan(uobs(1,:)) );
+          uvec(ins_avail) = uobs(1,ins_avail);
+          
+        ## if this is set to 1, simulate errors using random noise inside the loop
         sim_err=0;
         #keyboard ('Before Loop > ');
         for t=1:rows(yobs)
@@ -842,13 +874,13 @@ function [Y, ISS, X, Qs, StabCheck, ISS_Mtrx, X_Mtrx, Qs_Mtrx,Gss_Mtrx] = \
             #  keyboard
             #endif
             
+            
             ##
             ## Calculate next prediction
             ##
             yhat = ISS0.C * X0 + ISS0.D * uvec;
-
             
-                                    
+            
             ##
             ## Check if input or output is available for this time step;
             ## replace NaN's with zeros in the data vectors
@@ -1070,11 +1102,7 @@ function [Y, ISS, X, Qs, StabCheck, ISS_Mtrx, X_Mtrx, Qs_Mtrx,Gss_Mtrx] = \
                 fflush (stdout);
             endif # (another obs_avail block)
 
-            ## Something screwy happens between these two 'test'
-            ## displays when the parameter gain matrix (L) is
-            ## calculated from a nearly singular S matrix above.
-            #disp('test1'); fflush(stdout);
-   
+
             ##
             ## Update P (I'm not sure if P should be left as-is if no
             ##           observations are available or not)
@@ -1082,8 +1110,6 @@ function [Y, ISS, X, Qs, StabCheck, ISS_Mtrx, X_Mtrx, Qs_Mtrx,Gss_Mtrx] = \
             if (nv>0)
                 Qs0.P = 1/lam * (Qs0.P - L * S * L') + Qv;
             endif
-
-            #disp('test2'); fflush(stdout);
 
 
             ##
@@ -1115,27 +1141,7 @@ function [Y, ISS, X, Qs, StabCheck, ISS_Mtrx, X_Mtrx, Qs_Mtrx,Gss_Mtrx] = \
                 endif
             endif
 
-            ##
-            ## Update W 
-            ## 
-            if (nv>0)
-                Qs0.W = (ISS0.A-ISS0.K*ISS0.C) * Qs0.W + Mt - ISS0.K*Dt_C;
-            endif
 
-                        
-            ##
-            ## Calculate next state X(t+1)
-            ##
-            X0 = ISS0.A * X0 + ISS0.B * uvec + ISS0.K * err;
-            
-
-            
-            uvec(:)=0;
-            ins_avail = find( ~isnan(uobs(t,:)) );
-            uvec(ins_avail) = uobs(t,ins_avail);
-            
-
-  
             ##
             ## Determine the derivative matrices Dt_C and Dt_D (d/dtheta(Cx+Du))
             ##
@@ -1156,18 +1162,77 @@ function [Y, ISS, X, Qs, StabCheck, ISS_Mtrx, X_Mtrx, Qs_Mtrx,Gss_Mtrx] = \
             endif
 
 
-
-           
             ##
-            ## Update Psi
+            ## Update W  ***FIX ME*** I need to properly account for feedthrough here
+            ##                        by using Dt_D, but I don't know how!!!
+            ##             ***It seems to be fixed now...leave this text in as a reminder***
+            ##
+            if (nv>0)
+                Qs0.W = (ISS0.A-ISS0.K*ISS0.C) * Qs0.W + Mt - ISS0.K*[Dt_C+Dt_D];
+            endif
+
+
+            ##
+            ## Calculate next state X(t+1)
+            ##
+            ## (consider nesting a loop here that propogates the state
+            ##  forward N-steps, where N is a prediction horison; clearly
+            ##  this means dropping the Ke term, and using only the
+            ##  deterministic portion of the model...or...a more difficult,
+            ##  but probably elegant, solution is to optimize *ALL* of the
+            ##  coefficients for N-step preditions -- in other words, intro-
+            ##  duce yet another input parameter to this routine that forces
+            ##  the deterministic forecast to be carried out N steps, then
+            ##  a correction is applied based on the most recent error; if
+            ##  I am right, K will get smaller as N is made larger, and at
+            ##  some threshold the stochastic component of the model will
+            ##  be completely irrelevant to future states...the only problem
+            ##  is that the relevance of A, B, C, and D might very well 
+            ##  fade more quickly than K)
+            ##
+            X0 = ISS0.A * X0 + ISS0.B * uvec + ISS0.K * err;
+
+
+            ##
+            ## Update the input vector
+            ## (only if this is not the last iteration of this loop)
+            if (t~=rows(yobs))
+                uvec(:)=0;
+                ins_avail = find( ~isnan(uobs(t+1,:)) );
+                uvec(ins_avail) = uobs(t+1,ins_avail);
+            endif
+
+
+            ##
+            ## Determine the **updated** derivative matrices Dt_C and Dt_D (d/dtheta(Cx+Du))
+            ##
+            if (nv>0)
+                for i=1:length(Cv_cidx)
+                    Dt_Ctmp(Cv_cidx(i),i) = X0(ceil(Cv_idx/ny)(i));
+                endfor
+                if ismatrix(Dt_C)  # If zero-length matrix, don't do anything
+                    Dt_C((ny*nv)-numel(Dt_Dtmp)-numel(Dt_Ctmp)+1:(ny*nv)-numel(Dt_Dtmp)) = Dt_Ctmp(:); 
+                endif
+
+                for i=1:length(Dv_cidx)
+                    Dt_Dtmp(Dv_cidx(i),i) = uvec(ceil(Dv_idx/ny)(i));
+                endfor
+                if ismatrix(Dt_D)  # If zero-length matrix, don't do anything
+                    Dt_D((ny*nv)-numel(Dt_Dtmp)+1:(ny*nv)) = Dt_Dtmp(:);
+                endif
+            endif
+
+
+            ##
+            ## Update Psi  ***FIX ME*** I need to properly account for feedthrough here
+            ##                        by using Dt_D, but I don't know if I'm doing it right!!!
+            ##             ***It seems to be fixed now...leave this text in as a reminder***
             ##
             if (nv>0)
                 Qs0.Psi = Qs0.W' * ISS0.C' + Dt_C' + Dt_D';
             endif            
-            
 
-                        
-                                    
+
             ##
             ## Accumulate requested output matrices
             ##
@@ -1209,9 +1274,11 @@ function [Y, ISS, X, Qs, StabCheck, ISS_Mtrx, X_Mtrx, Qs_Mtrx,Gss_Mtrx] = \
         ##
         ## Put the last Gss back into Qs (it's already in Qs_Mtrx)
         ## consider cleaning this up some day, it's kind of ugly, even if
-        ## it doesn't really slow anything down
+        ## it doesn't really slow anything down...we do NOT want to place 
+        ## a string back here, so it's up to the user to remember if they
+        ## used an evaluated string as Gss, and to do so again in the future.
         ##
-        Qs.Gss(1) = Gss;
+        Qs.Gss = Gss;
         #keyboard("\nEKF_ISS (after loop) > ");
         if (nv>0) printf("\n"); endif
 
